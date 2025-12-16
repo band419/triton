@@ -1710,10 +1710,11 @@ SmallVector<Value> getTiedArgs(Operation *op, int resultIdx) {
 
 LogicalResult verifyBarrierType(Operation *op,
                                 mlir::triton::gpu::MemDescType barrierType) {
-  if (!barrierType.getElementType().isInteger(64) ||
-      barrierType.getShape() != ArrayRef<int64_t>({1}))
-    return op->emitOpError(
-        "barrier allocation must be a descriptor of 1xi64 type");
+  auto numCTAs = triton::gpu::lookupNumCTAs(op);
+  if (!(barrierType.getElementType().isInteger(64) &&
+        barrierType.getRank() == 1 && barrierType.getShape()[0] <= numCTAs))
+    return op->emitOpError("barrier allocation must be a descriptor of "
+                           "Nxi64 type with N <= number of CTAs");
   return success();
 }
 
