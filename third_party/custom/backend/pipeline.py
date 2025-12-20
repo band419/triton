@@ -249,13 +249,15 @@ def _lower_ttgir_to_llvm_custom(pm, mod, opt):
     
     This path uses custom passes and intrinsics, avoiding all NVIDIA-specific
     dialects and lowering passes.
+    
+    Note: Custom backend does NOT support shared memory. All memory operations
+    use global memory only, as per the hardware spec.
     """
     try:
         from triton._C.libtriton import custom  # type: ignore
         warp_size = _get_custom_warp_size(opt)
         
-        # Allocate shared memory using custom pass
-        custom.passes.ttgpuir.add_allocate_shared_memory(pm)
+        # Note: No shared memory allocation for Custom backend (global memory only)
         
         if knobs.compilation.instrumentation_mode == "consan":
             passes.ttgpuir.add_concurrency_sanitizer(pm)
@@ -419,6 +421,11 @@ def make_llir(mod, metadata: dict, opt, capability: int) -> str:
     if use_custom_llir:
         # Custom SIMT triple and datalayout
         triple, cpu, features, datalayout = _get_custom_triple_and_datalayout(opt)
+        # For custom LLIR mode, the target may not be supported by the host LLVM
+        # We skip the datalayout attachment step and rely on the module attributes
+        # set in the MLIR phase. The LLVM IR is valid without a specific target.
+        # TODO: Add proper datalayout setting when we have a full toolchain
+        pass
     else:
         # NVIDIA-compatible triple and datalayout
         triple = os.environ.get("TRITON_CUSTOM_LLVM_TRIPLE", "nvptx64-nvidia-cuda")
@@ -438,7 +445,7 @@ def make_llir(mod, metadata: dict, opt, capability: int) -> str:
             except Exception:
                 pass
 
-    llvm.attach_datalayout(llvm_mod, triple, cpu, features)
+        llvm.attach_datalayout(llvm_mod, triple, cpu, features)
 
     # Keep LLVM optimization level configurable.
     opt_level = os.environ.get("TRITON_CUSTOM_LLVM_OPT", "O3")
@@ -450,7 +457,13 @@ def make_llir(mod, metadata: dict, opt, capability: int) -> str:
     total_num_warps = mod.get_int_attr("ttg.total-num-warps")
     if total_num_warps is not None:
         metadata["num_warps"] = total_num_warps
-    metadata["shared"] = mod.get_int_attr("ttg.shared")
+    
+    # Custom backend: no shared memory support (global memory only)
+    if use_custom_llir:
+        metadata["shared"] = 0
+    else:
+        metadata["shared"] = mod.get_int_attr("ttg.shared")
+    
     metadata["tmem_size"] = mod.get_int_attr("ttg.tensor_memory_size")
     metadata["global_scratch_size"] = mod.get_int_attr("ttg.global_scratch_memory_size")
     metadata["global_scratch_align"] = mod.get_int_attr("ttg.global_scratch_memory_alignment")
@@ -458,6 +471,14 @@ def make_llir(mod, metadata: dict, opt, capability: int) -> str:
     metadata["profile_scratch_align"] = mod.get_int_attr("ttg.profile_scratch_memory_alignment") or 1
 
     ret = str(llvm_mod)
+    
+    # Extract kernel name from LLVM IR (look for define void @<name>)
+    import re
+    kernel_names = re.findall(r'define void @([a-zA-Z_][a-zA-Z0-9_]*)\(', ret)
+    if kernel_names:
+        metadata["name"] = kernel_names[0]
+    else:
+        metadata["name"] = "triton_kernel"
     
     # For custom mode, ensure all intrinsic declarations are present
     if use_custom_llir:

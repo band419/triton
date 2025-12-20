@@ -27,18 +27,4 @@ def ConvertTritonCustomToLLVM : Pass<"convert-triton-custom-to-llvm", "mlir::Mod
     ];
 }
 
-def AllocateCustomSharedMemory : Pass<"allocate-custom-shared-memory", "mlir::ModuleOp"> {
-  let summary = "Add metadata for shared memory allocation on Custom SIMT backend";
-
-  let description = [{
-    This pass uses the `ModuleAllocation` analysis to:
-      - Annotate modules with an attribute with the amount of shared/local
-        memory used.
-      - Annotate operations with an offset into the total shared/local memory.
-
-    For the Custom SIMT backend, shared memory is allocated from global memory
-    by the runtime, so this pass primarily tracks the required size.
-  }];
-}
-
 #endif // TRITON_CONVERSION_TRITONCUSTOM_TO_LLVM_PASSES

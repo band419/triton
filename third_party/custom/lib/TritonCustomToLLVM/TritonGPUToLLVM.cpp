@@ -11,12 +11,15 @@
 #include "TargetInfo.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "triton/Analysis/Allocation.h"
+#include "triton/Analysis/AxisInfo.h"
 #include "triton/Analysis/Membar.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
 #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
@@ -32,6 +35,215 @@ namespace mlir::triton {
 using namespace mlir;
 
 namespace {
+
+// ============================================================================
+// GPU Dialect to Custom LLVM Conversion Patterns
+// ============================================================================
+
+/// Convert mlir::gpu::ThreadIdOp to llvm.custom.thread.id intrinsic
+struct ThreadIdOpConversion
+    : public ConvertOpToLLVMPattern<mlir::gpu::ThreadIdOp> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(mlir::gpu::ThreadIdOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto module = op->getParentOfType<ModuleOp>();
+    auto i32Ty = rewriter.getI32Type();
+    auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
+
+    // Get or insert the thread id intrinsic declaration
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.thread.id")) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(module.getBody());
+      auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
+                                           "llvm.custom.thread.id", funcTy,
+                                           LLVM::Linkage::External);
+      func.setNoUnwind(true);
+    }
+
+    // Map dimension to axis value (x=0, y=1, z=2)
+    int32_t axis = 0;
+    switch (op.getDimension()) {
+    case mlir::gpu::Dimension::x:
+      axis = 0;
+      break;
+    case mlir::gpu::Dimension::y:
+      axis = 1;
+      break;
+    case mlir::gpu::Dimension::z:
+      axis = 2;
+      break;
+    }
+    Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                             rewriter.getI32IntegerAttr(axis));
+    auto call = LLVM::CallOp::create(rewriter, loc, i32Ty,
+                                     "llvm.custom.thread.id",
+                                     ValueRange{axisVal});
+    // Convert i32 to index type
+    Value result = arith::IndexCastOp::create(rewriter, loc,
+                                              rewriter.getIndexType(),
+                                              call.getResult());
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+/// Convert mlir::gpu::BlockIdOp to llvm.custom.block.id intrinsic
+struct BlockIdOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::BlockIdOp> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(mlir::gpu::BlockIdOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto module = op->getParentOfType<ModuleOp>();
+    auto i32Ty = rewriter.getI32Type();
+    auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
+
+    // Get or insert the block id intrinsic declaration
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.block.id")) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(module.getBody());
+      auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
+                                           "llvm.custom.block.id", funcTy,
+                                           LLVM::Linkage::External);
+      func.setNoUnwind(true);
+    }
+
+    int32_t axis = 0;
+    switch (op.getDimension()) {
+    case mlir::gpu::Dimension::x:
+      axis = 0;
+      break;
+    case mlir::gpu::Dimension::y:
+      axis = 1;
+      break;
+    case mlir::gpu::Dimension::z:
+      axis = 2;
+      break;
+    }
+    Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                             rewriter.getI32IntegerAttr(axis));
+    auto call = LLVM::CallOp::create(rewriter, loc, i32Ty,
+                                     "llvm.custom.block.id",
+                                     ValueRange{axisVal});
+    Value result = arith::IndexCastOp::create(rewriter, loc,
+                                              rewriter.getIndexType(),
+                                              call.getResult());
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+/// Convert mlir::gpu::BlockDimOp to constant or intrinsic
+struct BlockDimOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::BlockDimOp> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(mlir::gpu::BlockDimOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto module = op->getParentOfType<ModuleOp>();
+    auto i32Ty = rewriter.getI32Type();
+    auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
+
+    // Get or insert the block dim intrinsic declaration
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.block.dim")) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(module.getBody());
+      auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
+                                           "llvm.custom.block.dim", funcTy,
+                                           LLVM::Linkage::External);
+      func.setNoUnwind(true);
+    }
+
+    int32_t axis = 0;
+    switch (op.getDimension()) {
+    case mlir::gpu::Dimension::x:
+      axis = 0;
+      break;
+    case mlir::gpu::Dimension::y:
+      axis = 1;
+      break;
+    case mlir::gpu::Dimension::z:
+      axis = 2;
+      break;
+    }
+    Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                             rewriter.getI32IntegerAttr(axis));
+    auto call = LLVM::CallOp::create(rewriter, loc, i32Ty,
+                                     "llvm.custom.block.dim",
+                                     ValueRange{axisVal});
+    Value result = arith::IndexCastOp::create(rewriter, loc,
+                                              rewriter.getIndexType(),
+                                              call.getResult());
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+/// Convert mlir::gpu::GridDimOp to intrinsic
+struct GridDimOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::GridDimOp> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(mlir::gpu::GridDimOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto module = op->getParentOfType<ModuleOp>();
+    auto i32Ty = rewriter.getI32Type();
+    auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
+
+    // Get or insert the grid dim intrinsic declaration
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.grid.dim")) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(module.getBody());
+      auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
+                                           "llvm.custom.grid.dim", funcTy,
+                                           LLVM::Linkage::External);
+      func.setNoUnwind(true);
+    }
+
+    int32_t axis = 0;
+    switch (op.getDimension()) {
+    case mlir::gpu::Dimension::x:
+      axis = 0;
+      break;
+    case mlir::gpu::Dimension::y:
+      axis = 1;
+      break;
+    case mlir::gpu::Dimension::z:
+      axis = 2;
+      break;
+    }
+    Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                             rewriter.getI32IntegerAttr(axis));
+    auto call = LLVM::CallOp::create(rewriter, loc, i32Ty,
+                                     "llvm.custom.grid.dim",
+                                     ValueRange{axisVal});
+    Value result = arith::IndexCastOp::create(rewriter, loc,
+                                              rewriter.getIndexType(),
+                                              call.getResult());
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+// Helper to populate GPU dialect patterns
+void populateCustomGpuToLLVMPatterns(LLVMTypeConverter &typeConverter,
+                                     RewritePatternSet &patterns,
+                                     PatternBenefit benefit) {
+  patterns.add<ThreadIdOpConversion>(typeConverter, benefit);
+  patterns.add<BlockIdOpConversion>(typeConverter, benefit);
+  patterns.add<BlockDimOpConversion>(typeConverter, benefit);
+  patterns.add<GridDimOpConversion>(typeConverter, benefit);
+}
+
+// ============================================================================
+// Conversion Targets
+// ============================================================================
 
 class TritonLLVMFunctionConversionTarget : public ConversionTarget {
 public:
@@ -82,7 +294,7 @@ struct ConvertTritonCustomToLLVM
     mlir::LowerToLLVMOptions option(context);
     option.overrideIndexBitwidth(32);
 
-    TritonGPUToLLVMTypeConverter typeConverter(context, option);
+    TritonGPUToLLVMTypeConverter typeConverter(context, option, targetInfo);
     TritonLLVMConversionTarget convTarget(*context);
 
     int numCTAs = triton::gpu::TritonGPUDialect::getNumCTAs(mod);
@@ -92,6 +304,9 @@ struct ConvertTritonCustomToLLVM
     ModuleAllocation allocation(mod);
     ModuleMembarAnalysis membarPass(&allocation);
     membarPass.run();
+
+    // Axis info analysis for elementwise operations
+    ModuleAxisInfoAnalysis axisInfoAnalysis(mod);
 
     // Lower functions
     {
@@ -106,11 +321,15 @@ struct ConvertTritonCustomToLLVM
         return signalPassFailure();
     }
 
-    // Initialize shared memory (use global memory for Custom backend)
-    initSharedMemory(typeConverter);
+    // Note: Custom backend does NOT use shared memory (global memory only)
+    // No initSharedMemory() call needed
 
     RewritePatternSet patterns(context);
     int benefit = patternBenefitPrioritizeOverLLVMConversions;
+
+    // Populate custom elementwise op patterns (includes floating-point ops)
+    mlir::triton::Custom::populateElementwiseOpToLLVMPatterns(
+        typeConverter, patterns, axisInfoAnalysis, targetInfo, benefit);
 
     // Populate conversion patterns
     mlir::triton::populateConvertLayoutOpToLLVMPatterns(
@@ -143,6 +362,11 @@ struct ConvertTritonCustomToLLVM
                                                        targetInfo, benefit);
     mlir::triton::Custom::populateBarrierOpToLLVMPattern(typeConverter, patterns,
                                                           benefit);
+    mlir::triton::Custom::populateLoadStoreOpToLLVMPatterns(
+        typeConverter, targetInfo, patterns, axisInfoAnalysis, benefit);
+
+    // GPU dialect to custom LLVM patterns (thread_id, block_id, etc.)
+    populateCustomGpuToLLVMPatterns(typeConverter, patterns, benefit);
 
     // Standard MLIR conversion patterns
     mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
@@ -157,23 +381,6 @@ struct ConvertTritonCustomToLLVM
 
     // Make all warp group code isolated from above
     makeAllWarpGroupsIsolatedFromAbove(mod);
-  }
-
-private:
-  void initSharedMemory(LLVMTypeConverter &typeConverter) {
-    ModuleOp mod = getOperation();
-    OpBuilder b(mod.getBodyRegion());
-    auto ctx = mod.getContext();
-    auto loc = mod.getLoc();
-    auto elemTy = typeConverter.convertType(b.getIntegerType(8));
-    
-    // For Custom backend, shared memory is allocated from global memory
-    // We still create a placeholder global for compatibility with existing code
-    auto arrayTy = LLVM::LLVMArrayType::get(elemTy, 0);
-    LLVM::GlobalOp::create(b, loc, arrayTy, /*isConstant=*/false,
-                           LLVM::Linkage::External, "global_smem",
-                           /*value=*/Attribute(), /*alignment=*/16,
-                           /*addrSpace=*/0);
   }
 };
 

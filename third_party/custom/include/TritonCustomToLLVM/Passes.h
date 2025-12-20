@@ -23,9 +23,6 @@ namespace mlir::triton {
 std::unique_ptr<OperationPass<ModuleOp>>
 createConvertTritonCustomToLLVMPass(int32_t warpSize = 32);
 
-std::unique_ptr<OperationPass<ModuleOp>>
-createAllocateCustomSharedMemoryPass();
-
 #define GEN_PASS_REGISTRATION
 #include "TritonCustomToLLVM/Passes.h.inc"
 

@@ -24,12 +24,6 @@ void init_triton_custom_passes_ttgpuir(py::module &&m) {
           pm.addPass(createConvertTritonCustomToLLVMPass(warpSize));
         },
         py::arg("pm"), py::arg("warp_size") = 32);
-
-  m.def("add_allocate_shared_memory",
-        [](mlir::PassManager &pm) {
-          pm.addPass(createAllocateCustomSharedMemoryPass());
-        },
-        py::arg("pm"));
 }
 
 void init_triton_custom(py::module &&m) {

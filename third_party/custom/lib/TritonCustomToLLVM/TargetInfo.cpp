@@ -25,8 +25,8 @@ LLVM::LLVMFuncOp getOrInsertFunction(ModuleOp module, RewriterBase &rewriter,
   }
   RewriterBase::InsertionGuard guard(rewriter);
   rewriter.setInsertionPointToStart(module.getBody());
-  auto func = rewriter.create<LLVM::LLVMFuncOp>(loc, name, type,
-                                                 LLVM::Linkage::External);
+  auto func = LLVM::LLVMFuncOp::create(rewriter, loc, name, type,
+                                        LLVM::Linkage::External);
   return func;
 }
 
@@ -48,13 +48,8 @@ LLVM::LLVMFuncOp TargetInfo::getOrInsertIntrinsic(
       func.setConvergent(true);
     } else if (attr == "nounwind") {
       func.setNoUnwind(true);
-    } else if (attr == "readnone") {
-      func.setMemoryAttr(LLVM::MemoryEffectsAttr::get(
-          rewriter.getContext(),
-          /*other=*/LLVM::ModRefInfo::NoModRef,
-          /*argMem=*/LLVM::ModRefInfo::NoModRef,
-          /*inaccessibleMem=*/LLVM::ModRefInfo::NoModRef));
     }
+    // Note: readnone can be set via passthrough attributes if needed
   }
   return func;
 }
@@ -64,11 +59,10 @@ Value TargetInfo::getLaneId(RewriterBase &rewriter, Location loc) const {
   auto i32Ty = rewriter.getI32Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.lane.id", funcTy,
-                       {"readnone", "nounwind"});
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.lane.id", funcTy,
+                       {"nounwind"});
   
-  return rewriter.create<LLVM::CallOp>(loc, i32Ty, "llvm.custom.lane.id",
-                                       ValueRange{}).getResult();
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{}).getResult();
 }
 
 Value TargetInfo::getWarpSizeValue(RewriterBase &rewriter, Location loc) const {
@@ -76,11 +70,10 @@ Value TargetInfo::getWarpSizeValue(RewriterBase &rewriter, Location loc) const {
   auto i32Ty = rewriter.getI32Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.warp.size", funcTy,
-                       {"readnone", "nounwind"});
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.warp.size", funcTy,
+                       {"nounwind"});
   
-  return rewriter.create<LLVM::CallOp>(loc, i32Ty, "llvm.custom.warp.size",
-                                       ValueRange{}).getResult();
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{}).getResult();
 }
 
 Value TargetInfo::getNumPrograms(RewriterBase &rewriter, Location loc,
@@ -89,13 +82,12 @@ Value TargetInfo::getNumPrograms(RewriterBase &rewriter, Location loc,
   auto i32Ty = rewriter.getI32Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.num.programs", funcTy,
-                       {"readnone", "nounwind"});
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.num.programs", funcTy,
+                       {"nounwind"});
   
-  Value axisVal = rewriter.create<LLVM::ConstantOp>(
-      loc, i32Ty, static_cast<int32_t>(axis));
-  return rewriter.create<LLVM::CallOp>(loc, i32Ty, "llvm.custom.num.programs",
-                                       ValueRange{axisVal}).getResult();
+  Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                           rewriter.getI32IntegerAttr(static_cast<int32_t>(axis)));
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{axisVal}).getResult();
 }
 
 // =============================================================================
@@ -109,7 +101,8 @@ bool TargetInfo::supportMaximumMinimum() const {
 
 Value TargetInfo::getClusterCTAId(RewriterBase &rewriter, Location loc) const {
   // Custom backend doesn't support multi-CTA clusters, return 0
-  return rewriter.create<LLVM::ConstantOp>(loc, rewriter.getI32Type(), 0);
+  return LLVM::ConstantOp::create(rewriter, loc, rewriter.getI32Type(),
+                                  rewriter.getI32IntegerAttr(0));
 }
 
 Value TargetInfo::ballot(RewriterBase &rewriter, Location loc, Type type,
@@ -120,18 +113,17 @@ Value TargetInfo::ballot(RewriterBase &rewriter, Location loc, Type type,
   auto i1Ty = rewriter.getI1Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i1Ty});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.ballot", funcTy,
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.ballot", funcTy,
                        {"convergent", "nounwind"});
   
-  Value result = rewriter.create<LLVM::CallOp>(
-      loc, i32Ty, "llvm.custom.ballot", ValueRange{cmp}).getResult();
+  Value result = LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{cmp}).getResult();
   
   // If the result type is different from i32, extend/truncate
   if (type != i32Ty) {
     if (type.getIntOrFloatBitWidth() > 32) {
-      result = rewriter.create<LLVM::ZExtOp>(loc, type, result);
+      result = LLVM::ZExtOp::create(rewriter, loc, type, result);
     } else {
-      result = rewriter.create<LLVM::TruncOp>(loc, type, result);
+      result = LLVM::TruncOp::create(rewriter, loc, type, result);
     }
   }
   return result;
@@ -146,51 +138,30 @@ void TargetInfo::barrier(Location loc, RewriterBase &rewriter,
                                        : "llvm.custom.barrier";
   auto funcTy = LLVM::LLVMFunctionType::get(voidTy, {});
   
-  getOrInsertIntrinsic(rewriter, module, intrinsicName, funcTy,
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, intrinsicName, funcTy,
                        {"convergent", "nounwind"});
   
-  rewriter.create<LLVM::CallOp>(loc, TypeRange{}, intrinsicName, ValueRange{});
+  LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{});
 }
 
 void TargetInfo::storeDShared(RewriterBase &rewriter, Location loc, Value ptr,
                               std::optional<Value> ctaId, Value val,
                               Value pred) const {
-  if (ctaId.has_value()) {
-    llvm::report_fatal_error(
-        "Custom SIMT backend does not support cross-CTA shared memory transfers");
-  }
-  
-  // For Custom backend, shared memory is part of global memory
-  // Simple predicated store
-  auto i1Ty = rewriter.getI1Type();
-  
-  // Create a conditional store
-  Block *currentBlock = rewriter.getInsertionBlock();
-  Block::iterator insertPoint = rewriter.getInsertionPoint();
-  
-  Block *storeBlock = rewriter.splitBlock(currentBlock, insertPoint);
-  Block *afterBlock = rewriter.splitBlock(storeBlock, storeBlock->begin());
-  
-  rewriter.setInsertionPointToEnd(currentBlock);
-  rewriter.create<LLVM::CondBrOp>(loc, pred, storeBlock, afterBlock);
-  
-  rewriter.setInsertionPointToStart(storeBlock);
-  rewriter.create<LLVM::StoreOp>(loc, val, ptr);
-  rewriter.create<LLVM::BrOp>(loc, afterBlock);
-  
-  rewriter.setInsertionPointToStart(afterBlock);
+  // Custom SIMT backend does NOT support shared memory.
+  // All memory is global memory only.
+  llvm::report_fatal_error(
+      "Custom SIMT backend does not support shared memory operations. "
+      "Use global memory only.");
 }
 
 Value TargetInfo::loadDShared(RewriterBase &rewriter, Location loc, Value ptr,
                               std::optional<Value> ctaId, Type elemTy,
                               Value pred, Operation *localLoadOp) const {
-  if (ctaId.has_value()) {
-    llvm::report_fatal_error(
-        "Custom SIMT backend does not support cross-CTA shared memory transfers");
-  }
-  
-  // Simple load (Custom backend treats shared as global memory)
-  return rewriter.create<LLVM::LoadOp>(loc, elemTy, ptr);
+  // Custom SIMT backend does NOT support shared memory.
+  // All memory is global memory only.
+  llvm::report_fatal_error(
+      "Custom SIMT backend does not support shared memory operations. "
+      "Use global memory only.");
 }
 
 Value TargetInfo::shuffleXor(RewriterBase &rewriter, Location loc, Value val,
@@ -202,12 +173,12 @@ Value TargetInfo::shuffleXor(RewriterBase &rewriter, Location loc, Value val,
   // Shuffle intrinsic: llvm.custom.shuffle.xor(value, lane_mask) -> value
   auto funcTy = LLVM::LLVMFunctionType::get(valTy, {valTy, i32Ty});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.shuffle.xor", funcTy,
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.shuffle.xor", funcTy,
                        {"convergent", "nounwind"});
   
-  Value laneMask = rewriter.create<LLVM::ConstantOp>(loc, i32Ty, i);
-  return rewriter.create<LLVM::CallOp>(loc, valTy, "llvm.custom.shuffle.xor",
-                                       ValueRange{val, laneMask}).getResult();
+  Value laneMask = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                            rewriter.getI32IntegerAttr(i));
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{val, laneMask}).getResult();
 }
 
 Value TargetInfo::shuffleUp(RewriterBase &rewriter, Location loc, Value val,
@@ -218,12 +189,12 @@ Value TargetInfo::shuffleUp(RewriterBase &rewriter, Location loc, Value val,
   
   auto funcTy = LLVM::LLVMFunctionType::get(valTy, {valTy, i32Ty});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.shuffle.up", funcTy,
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.shuffle.up", funcTy,
                        {"convergent", "nounwind"});
   
-  Value delta = rewriter.create<LLVM::ConstantOp>(loc, i32Ty, i);
-  return rewriter.create<LLVM::CallOp>(loc, valTy, "llvm.custom.shuffle.up",
-                                       ValueRange{val, delta}).getResult();
+  Value delta = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                         rewriter.getI32IntegerAttr(i));
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{val, delta}).getResult();
 }
 
 Value TargetInfo::shuffleIdx(RewriterBase &rewriter, Location loc, Value val,
@@ -234,12 +205,12 @@ Value TargetInfo::shuffleIdx(RewriterBase &rewriter, Location loc, Value val,
   
   auto funcTy = LLVM::LLVMFunctionType::get(valTy, {valTy, i32Ty});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.shuffle.idx", funcTy,
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.shuffle.idx", funcTy,
                        {"convergent", "nounwind"});
   
-  Value laneIdx = rewriter.create<LLVM::ConstantOp>(loc, i32Ty, i);
-  return rewriter.create<LLVM::CallOp>(loc, valTy, "llvm.custom.shuffle.idx",
-                                       ValueRange{val, laneIdx}).getResult();
+  Value laneIdx = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                           rewriter.getI32IntegerAttr(i));
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{val, laneIdx}).getResult();
 }
 
 Value TargetInfo::shuffleIdx(RewriterBase &rewriter, Location loc, Value val,
@@ -250,11 +221,10 @@ Value TargetInfo::shuffleIdx(RewriterBase &rewriter, Location loc, Value val,
   
   auto funcTy = LLVM::LLVMFunctionType::get(valTy, {valTy, i32Ty});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.shuffle.idx", funcTy,
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.shuffle.idx", funcTy,
                        {"convergent", "nounwind"});
   
-  return rewriter.create<LLVM::CallOp>(loc, valTy, "llvm.custom.shuffle.idx",
-                                       ValueRange{val, i}).getResult();
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{val, i}).getResult();
 }
 
 Value TargetInfo::permute(RewriterBase &rewriter, Location loc, Value a,
@@ -264,11 +234,10 @@ Value TargetInfo::permute(RewriterBase &rewriter, Location loc, Value a,
   
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty, i32Ty, i32Ty});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.permute", funcTy,
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.permute", funcTy,
                        {"nounwind"});
   
-  return rewriter.create<LLVM::CallOp>(loc, i32Ty, "llvm.custom.permute",
-                                       ValueRange{a, b, selector}).getResult();
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{a, b, selector}).getResult();
 }
 
 Value TargetInfo::programId(RewriterBase &rewriter, Location loc,
@@ -276,13 +245,12 @@ Value TargetInfo::programId(RewriterBase &rewriter, Location loc,
   auto i32Ty = rewriter.getI32Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
   
-  getOrInsertIntrinsic(rewriter, moduleOp, "llvm.custom.program.id", funcTy,
-                       {"readnone", "nounwind"});
+  auto funcOp = getOrInsertIntrinsic(rewriter, moduleOp, "llvm.custom.program.id", funcTy,
+                       {"nounwind"});
   
-  Value axisVal = rewriter.create<LLVM::ConstantOp>(
-      loc, i32Ty, static_cast<int32_t>(axis));
-  return rewriter.create<LLVM::CallOp>(loc, i32Ty, "llvm.custom.program.id",
-                                       ValueRange{axisVal}).getResult();
+  Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                           rewriter.getI32IntegerAttr(static_cast<int32_t>(axis)));
+  return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{axisVal}).getResult();
 }
 
 bool TargetInfo::warpReduce(RewriterBase &rewriter, Location loc,
@@ -316,24 +284,19 @@ void TargetInfo::printf(RewriterBase &rewriter, Value formatStrStart,
   // Simple printf: int printf(const char* format, ...)
   // For now, just declare and call - actual implementation is runtime-dependent
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {ptrTy}, /*isVarArg=*/true);
-  getOrInsertIntrinsic(rewriter, module, "printf", funcTy, {"nounwind"});
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "printf", funcTy, {"nounwind"});
   
   SmallVector<Value> printfArgs;
   printfArgs.push_back(formatStrStart);
   printfArgs.append(args.begin(), args.end());
   
-  rewriter.create<LLVM::CallOp>(loc, i32Ty, "printf", printfArgs);
+  LLVM::CallOp::create(rewriter, loc, funcOp, printfArgs);
 }
 
 void TargetInfo::printf(RewriterBase &rewriter, StringRef msg, ValueRange args,
                         ArrayRef<bool> isSigned) const {
   // Create format string and call printf
   // For debug purposes - implementation can be expanded as needed
-  Location loc = rewriter.getUnknownLoc();
-  auto module = rewriter.getBlock()->getParent()->getParentOfType<ModuleOp>();
-  
-  // This is a simplified implementation
-  // A full implementation would create a global string constant and call printf
 }
 
 void TargetInfo::assertFail(RewriterBase &rewriter, Location loc,
@@ -343,11 +306,10 @@ void TargetInfo::assertFail(RewriterBase &rewriter, Location loc,
   auto voidTy = LLVM::LLVMVoidType::get(rewriter.getContext());
   auto funcTy = LLVM::LLVMFunctionType::get(voidTy, {});
   
-  getOrInsertIntrinsic(rewriter, module, "llvm.custom.assert.fail", funcTy,
+  auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.assert.fail", funcTy,
                        {"nounwind"});
   
-  rewriter.create<LLVM::CallOp>(loc, TypeRange{}, "llvm.custom.assert.fail",
-                                ValueRange{});
+  LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{});
 }
 
 int TargetInfo::getSharedAddressSpace() const {

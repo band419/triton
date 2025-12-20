@@ -35,7 +35,6 @@ third_party/custom/
     ├── CMakeLists.txt
     └── TritonCustomToLLVM/
         ├── CMakeLists.txt
-        ├── AllocateSharedMemory.cpp        # 共享内存分配 pass
         ├── BarrierOpToLLVM.cpp             # Barrier → intrinsic
         ├── PatternTritonGPUOpToLLVM.h      # Pattern 头文件
         ├── SPMDOpToLLVM.cpp                # program_id → intrinsic
@@ -43,6 +42,8 @@ third_party/custom/
         ├── TargetInfo.h                    # CustomTargetInfo 声明
         └── TritonGPUToLLVM.cpp             # 主 conversion pass
 ```
+
+**注意**：Custom backend 不支持 shared memory（仅 global memory），因此没有 `AllocateSharedMemory.cpp`。
 
 ### Python 层（Pipeline）
 

@@ -3,6 +3,7 @@
 
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "triton/Analysis/AxisInfo.h"
 
 namespace mlir::triton::Custom {
 
@@ -22,6 +23,20 @@ void populateSPMDOpToLLVMPattern(LLVMTypeConverter &typeConverter,
 void populateBarrierOpToLLVMPattern(LLVMTypeConverter &typeConverter,
                                     RewritePatternSet &patterns,
                                     PatternBenefit benefit);
+
+/// Populate load/store operation patterns for global memory
+void populateLoadStoreOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
+                                       const TargetInfo &targetInfo,
+                                       RewritePatternSet &patterns,
+                                       ModuleAxisInfoAnalysis &axisInfoAnalysis,
+                                       PatternBenefit benefit);
+
+/// Populate elementwise operation patterns (floating-point ops, etc.)
+void populateElementwiseOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
+                                         RewritePatternSet &patterns,
+                                         ModuleAxisInfoAnalysis &axisInfoAnalysis,
+                                         const TargetInfo &targetInfo,
+                                         PatternBenefit benefit);
 
 } // namespace mlir::triton::Custom
 

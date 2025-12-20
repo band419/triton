@@ -1,6 +1,7 @@
 #ifndef TRITON_THIRD_PARTY_CUSTOM_LIB_TRITONCUSTOMTOLLVM_TARGETINFO_H_
 #define TRITON_THIRD_PARTY_CUSTOM_LIB_TRITONCUSTOMTOLLVM_TARGETINFO_H_
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "triton/Conversion/TritonGPUToLLVM/TargetInfoBase.h"
 #include <string>
 

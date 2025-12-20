@@ -138,5 +138,7 @@ class CustomBackend(nvidia_compiler.CUDABackend):
 
     @functools.lru_cache()
     def hash(self):
-        # Reuse NVIDIA hash but ensure it differs from plain cuda backend.
-        return "custom-" + super().hash()
+        # Custom backend doesn't need ptxas, use a simpler hash
+        import hashlib
+        key = f"custom-{self.target.arch}-{self.target.warp_size}"
+        return hashlib.sha256(key.encode("utf-8")).hexdigest()

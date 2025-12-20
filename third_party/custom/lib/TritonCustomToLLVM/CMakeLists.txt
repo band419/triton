@@ -1,6 +1,7 @@
 add_triton_library(TritonCustomToLLVM
-    AllocateSharedMemory.cpp
     BarrierOpToLLVM.cpp
+    ElementwiseOpToLLVM.cpp
+    LoadStoreOpToLLVM.cpp
     SPMDOpToLLVM.cpp
     TargetInfo.cpp
     TritonGPUToLLVM.cpp

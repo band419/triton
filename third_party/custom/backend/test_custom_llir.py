@@ -159,7 +159,7 @@ def test_pipeline_functions():
     print("=" * 60)
     
     try:
-        from third_party.custom.backend import pipeline
+        from triton.backends.custom import pipeline
         
         # Check that new functions exist
         assert hasattr(pipeline, '_lower_ttgir_to_llvm_nvidia'), \
@@ -197,8 +197,7 @@ def test_intrinsic_injection():
     print("=" * 60)
     
     try:
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from third_party.custom.backend.pipeline import _inject_custom_intrinsic_declarations
+        from triton.backends.custom.pipeline import _inject_custom_intrinsic_declarations
         
         test_llir = '''
 target triple = "riscv32-unknown-unknown"
