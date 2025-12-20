@@ -995,7 +995,9 @@ public:
     MLIRContext *context = &getContext();
     ModuleOp m = getOperation();
 
-    auto computeCapability = getNVIDIAComputeCapability(m);
+    auto computeCapability = tryGetNVIDIAComputeCapability(m);
+    if (!computeCapability)
+      return;
     // We could do this generically if we manage to improve the heuristics
     // reverted in these two PRs https://github.com/triton-lang/triton/pull/5834
     // https://github.com/triton-lang/triton/pull/5837
@@ -1006,18 +1008,18 @@ public:
     constexpr int benefitMMAv5 = 10;
     constexpr int benefitSM120 = 10;
 
-    patterns.add<BlockedToMMA>(context, computeCapability, benefitDefault);
-    patterns.add<ScaledBlockedToMMA>(context, computeCapability, benefitSM120);
+    patterns.add<BlockedToMMA>(context, *computeCapability, benefitDefault);
+    patterns.add<ScaledBlockedToMMA>(context, *computeCapability, benefitSM120);
     populateDecomposeScaledBlockedPatterns(patterns, benefitDefault);
     patterns.add<BlockedToMMAv5, ScaledBlockedToMMAv5>(
-        context, computeCapability, benefitMMAv5);
+      context, *computeCapability, benefitMMAv5);
 
     if (applyPatternsGreedily(m, std::move(patterns)).failed()) {
       signalPassFailure();
     }
     // Now that we have picked the mma type, decompose dot that are not natively
     // supported.
-    decomposeMixedModeDotOp(m, computeCapability);
+    decomposeMixedModeDotOp(m, *computeCapability);
   }
 };
 

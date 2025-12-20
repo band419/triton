@@ -134,8 +134,17 @@ def compile_kernel(args: CompileArgs):
     attrs = {k: [["tt.divisibility", 16]] for k, v in hints.items() if v == 16}
     kernel.create_binder()
     src = kernel.ASTSource(fn=kernel, constexprs=constants, signature=signature, attrs=attrs)
-    target = triton.backends.compiler.GPUTarget(*args.target.split(":")) \
-        if args.target else triton.runtime.driver.active.get_current_target()
+    def _parse_target(s: str):
+        parts = s.split(":")
+        if len(parts) != 3:
+            raise ValueError("--target must have the form '<backend>:<arch>:<warp_size>'")
+        backend, arch_s, warp_s = parts
+        # CUDA-style arch is numeric; HIP-style arch is a string like gfx942.
+        arch = int(arch_s) if arch_s.isdigit() else arch_s
+        warp_size = int(warp_s)
+        return triton.backends.compiler.GPUTarget(backend, arch, warp_size)
+
+    target = _parse_target(args.target) if args.target else triton.runtime.driver.active.get_current_target()
     backend = triton.compiler.make_backend(target)
     kwargs = {"num_warps": args.num_warps, "num_stages": args.num_stages}
     options = backend.parse_options(kwargs)
@@ -170,6 +179,15 @@ def compile_kernel(args: CompileArgs):
     func_name = '_'.join([out_name, sig_hash, suffix])
     asm = ccinfo.asm[backend.binary_ext]  # store binary data once
 
+    # If this backend does not provide a C stub template directory (e.g. custom
+    # blob backends), just emit the binary artifact to disk and return.
+    backend_name = target.backend
+    template_dir = Path(__file__).parent / "extra" / backend_name
+    if not template_dir.exists():
+        output_file = out_path.with_suffix(f".{sig_hash}_{suffix}.{backend.binary_ext}")
+        output_file.write_bytes(asm)
+        return func_name, [output_file]
+
     hex_ = str(binascii.hexlify(asm))[2:-1]
 
     ty_to_cpp = triton.runtime.driver.active.map_python_to_cpp_type
@@ -194,8 +212,6 @@ def compile_kernel(args: CompileArgs):
         "warp_size": target.warp_size,
     }
     output_files = []
-    backend_name = target.backend
-    template_dir = Path(__file__).parent / "extra" / backend_name
     for template_path in template_dir.glob('compile.*'):
         ext = template_path.suffix
         output_file = out_path.with_suffix(f".{sig_hash}_{suffix}{ext}")

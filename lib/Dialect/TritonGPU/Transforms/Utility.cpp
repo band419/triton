@@ -1047,22 +1047,28 @@ bool isPureUnaryInlineAsm(Operation *op) {
          inlineAsmOp.getPure();
 }
 
-int getNVIDIAComputeCapability(Operation *module) {
+std::optional<int> tryGetNVIDIAComputeCapability(Operation *module) {
   StringAttr targetAttr =
       module->getAttrOfType<StringAttr>(triton::gpu::AttrTargetName);
-  assert(targetAttr && "Expected a target attribute on the module operation");
+  if (!targetAttr)
+    return {};
 
   StringRef ref = targetAttr.strref();
-  assert(ref.starts_with("cuda:") &&
-         "expected target attribute to be prefixed with \"cuda:\"");
+  if (!ref.starts_with("cuda:"))
+    return {};
 
   StringRef capabilityStr = ref.drop_front(5); // drop the "cuda:"
-  int computeCapability;
-  bool parseError = capabilityStr.getAsInteger(10, computeCapability);
-  assert(!parseError &&
-         "invalid compute capability string in target attribute");
+  int computeCapability = 0;
+  if (capabilityStr.getAsInteger(10, computeCapability))
+    return {};
 
   return computeCapability;
+}
+
+int getNVIDIAComputeCapability(Operation *module) {
+  auto cc = tryGetNVIDIAComputeCapability(module);
+  assert(cc && "Expected CUDA target attribute in the form 'cuda:<cc>'");
+  return *cc;
 }
 
 std::optional<StringRef> getAMDArch(Operation *module) {

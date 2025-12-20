@@ -205,6 +205,10 @@ Value linearize(OpBuilder &b, Location loc, ArrayRef<Value> multiDim,
 // operand and single result.
 bool isPureUnaryInlineAsm(Operation *op);
 
+// Try to read the NVIDIA compute capability from the module attributes.
+// Returns std::nullopt when the target is not CUDA or when parsing fails.
+std::optional<int> tryGetNVIDIAComputeCapability(Operation *module);
+
 // read the compute capability from the module attributes
 int getNVIDIAComputeCapability(Operation *module);
 
