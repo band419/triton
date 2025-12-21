@@ -334,6 +334,11 @@ struct ConvertTritonCustomToLLVM
     // Populate conversion patterns
     mlir::triton::populateConvertLayoutOpToLLVMPatterns(
         typeConverter, targetInfo, patterns, benefit);
+
+    // Dot lowering (SIMT FMA fallback).
+    mlir::triton::Custom::populateDotOpToLLVMPatterns(
+      typeConverter, patterns, axisInfoAnalysis, targetInfo, benefit);
+
     mlir::triton::populateReduceOpToLLVMPatterns(typeConverter, patterns,
                                                   targetInfo, benefit);
     mlir::triton::populateScanOpToLLVMPatterns(typeConverter, patterns,

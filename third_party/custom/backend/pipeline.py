@@ -70,10 +70,36 @@ def make_ttgir(mod, metadata: dict, opt, capability: int):
 
     # ---------------------------------------------------------------------
     # Custom-hardware-friendly TTGIR path (default)
+    # Phase B4: This path is NVIDIA-free, avoiding all NVIDIA-specific passes
     # ---------------------------------------------------------------------
     if mode not in ("nvidia", "cuda"):
         # Goal: keep the TTGIR legal and reasonably optimized without
         # introducing NVIDIA-only concepts (MMA/TMA/TMEM/cp.async/ptxas).
+        #
+        # NVIDIA passes explicitly NOT used in custom mode:
+        # - nvidia.passes.ttnvgpuir.add_plan_cta (NVIDIA CTA planning)
+        # - nvidia.passes.ttnvgpuir.add_optimize_descriptor_encoding (TMA)
+        # - nvidia.passes.hopper.add_hopper_warpspec (Hopper warp specialization)
+        # - nvidia.passes.ttnvgpuir.add_promote_lhs_to_tmem (TMEM)
+        # - nvidia.passes.ttnvgpuir.add_remove_tmem_tokens (TMEM)
+        # - nvidia.passes.ttnvgpuir.add_optimize_tmem_layouts (TMEM)
+        # - nvidia.passes.ttnvgpuir.add_tma_lowering (TMA)
+        # - nvidia.passes.ttnvgpuir.add_interleave_tmem (TMEM)
+        # - nvidia.passes.ttnvgpuir.add_fence_insertion (CUDA fences)
+        # - nvidia.passes.ttnvgpuir.add_lower_mma (MMA operations)
+        # - nvidia.passes.ttgpuir.add_allocate_shared_memory_nv (shared mem)
+        # - nvidia.passes.ttnvgpuir.add_allocate_tensor_memory (TMEM)
+        #
+        # Generic passes that ARE safe for custom hardware:
+        # - passes.ttgpuir.add_coalesce (memory coalescing - generic)
+        # - passes.ttgpuir.add_remove_layout_conversions (layout - generic)
+        # - passes.ttgpuir.add_optimize_thread_locality (thread - generic)
+        # - passes.ttir.add_triton_licm (LICM - generic)
+        # - passes.ttir.add_loop_aware_cse (CSE - generic)
+        # - passes.common.add_canonicalizer (canonicalize - generic)
+        # - passes.common.add_cse (CSE - generic)
+        # - passes.common.add_symbol_dce (DCE - generic)
+        
         if _env_flag("TRITON_CUSTOM_ENABLE_TTGIR_COALESCE", "1"):
             passes.ttgpuir.add_coalesce(pm)
 
@@ -250,6 +276,16 @@ def _lower_ttgir_to_llvm_custom(pm, mod, opt):
     This path uses custom passes and intrinsics, avoiding all NVIDIA-specific
     dialects and lowering passes.
     
+    Phase B4: NVIDIA passes explicitly NOT used:
+    - nvidia.passes.ttgpuir.add_allocate_shared_memory_nv (shared memory)
+    - nvidia.passes.ttnvgpuir.add_allocate_tensor_memory (TMEM)
+    - nvidia.passes.ttnvgpuir.add_check_matmul_two_cta (multi-CTA matmul)
+    - nvidia.passes.ttnvgpuir.add_proxy_fence_insertion (CUDA fences)
+    - nvidia.passes.ttgpuir.add_to_llvmir (NVIDIA LLVM lowering)
+    - nvidia.passes.ttnvgpuir.add_nvgpu_to_llvm (NVGPU dialect)
+    - nvidia.passes.ttnvgpuir.add_warp_specialize_to_llvm (warp spec)
+    - passes.convert.add_nvvm_to_llvm (NVVM dialect)
+    
     Note: Custom backend does NOT support shared memory. All memory operations
     use global memory only, as per the hardware spec.
     """
@@ -258,6 +294,8 @@ def _lower_ttgir_to_llvm_custom(pm, mod, opt):
         warp_size = _get_custom_warp_size(opt)
         
         # Note: No shared memory allocation for Custom backend (global memory only)
+        # This is a key difference from NVIDIA path which uses:
+        # - nvidia.passes.ttgpuir.add_allocate_shared_memory_nv
         
         if knobs.compilation.instrumentation_mode == "consan":
             passes.ttgpuir.add_concurrency_sanitizer(pm)
@@ -265,6 +303,7 @@ def _lower_ttgir_to_llvm_custom(pm, mod, opt):
         passes.ttgpuir.add_allocate_global_scratch_memory(pm)
         
         # Convert to LLVM using custom pass (generates custom intrinsics)
+        # This replaces nvidia.passes.ttgpuir.add_to_llvmir
         custom.passes.ttgpuir.add_to_llvmir(pm, warp_size)
         
         passes.common.add_canonicalizer(pm)
@@ -421,13 +460,15 @@ def make_llir(mod, metadata: dict, opt, capability: int) -> str:
     if use_custom_llir:
         # Custom SIMT triple and datalayout
         triple, cpu, features, datalayout = _get_custom_triple_and_datalayout(opt)
-        # For custom LLIR mode, the target may not be supported by the host LLVM
-        # We skip the datalayout attachment step and rely on the module attributes
-        # set in the MLIR phase. The LLVM IR is valid without a specific target.
-        # TODO: Add proper datalayout setting when we have a full toolchain
-        pass
+        # Note: We don't call llvm.attach_datalayout() because the target triple
+        # may not be known to the host LLVM. Instead, we inject the triple and
+        # datalayout directly into the LLIR string before returning.
+        custom_triple = triple
+        custom_datalayout = datalayout
     else:
         # NVIDIA-compatible triple and datalayout
+        custom_triple = None
+        custom_datalayout = None
         triple = os.environ.get("TRITON_CUSTOM_LLVM_TRIPLE", "nvptx64-nvidia-cuda")
         cpu = os.environ.get("TRITON_CUSTOM_LLVM_CPU", "")
         features = os.environ.get("TRITON_CUSTOM_LLVM_FEATURES", "")
@@ -480,8 +521,40 @@ def make_llir(mod, metadata: dict, opt, capability: int) -> str:
     else:
         metadata["name"] = "triton_kernel"
     
-    # For custom mode, ensure all intrinsic declarations are present
+    # For custom mode, inject triple/datalayout and intrinsic declarations
     if use_custom_llir:
+        # Inject target triple and datalayout at the start of the module
+        # We do this as string manipulation because the target may not be
+        # known to the host LLVM's attach_datalayout function.
+        lines = ret.split('\n')
+        inject_lines = []
+        
+        # Find the right place to inject (after any comments/source_filename)
+        insert_pos = 0
+        for i, line in enumerate(lines):
+            if line.strip().startswith(';') or line.strip().startswith('source_filename'):
+                insert_pos = i + 1
+            elif line.strip().startswith('target'):
+                # Already has target, skip injection for this line type
+                pass
+            elif line.strip() and not line.strip().startswith(';'):
+                break
+        
+        # Check if triple/datalayout already exist
+        has_triple = any('target triple' in line for line in lines)
+        has_datalayout = any('target datalayout' in line for line in lines)
+        
+        if not has_datalayout and custom_datalayout:
+            inject_lines.append(f'target datalayout = "{custom_datalayout}"')
+        if not has_triple and custom_triple:
+            inject_lines.append(f'target triple = "{custom_triple}"')
+        
+        if inject_lines:
+            for i, inject_line in enumerate(inject_lines):
+                lines.insert(insert_pos + i, inject_line)
+            ret = '\n'.join(lines)
+        
+        # Ensure all intrinsic declarations are present
         ret = _inject_custom_intrinsic_declarations(ret)
     
     del llvm_mod

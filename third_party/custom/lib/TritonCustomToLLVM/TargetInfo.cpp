@@ -45,11 +45,34 @@ LLVM::LLVMFuncOp TargetInfo::getOrInsertIntrinsic(
   // Add function attributes if not already present
   for (auto attr : attrs) {
     if (attr == "convergent") {
+      // convergent: prevents LLVM from moving this call past control flow
+      // Critical for barrier and cross-lane operations
       func.setConvergent(true);
     } else if (attr == "nounwind") {
+      // nounwind: function does not throw exceptions
       func.setNoUnwind(true);
+    } else if (attr == "willreturn") {
+      // willreturn: function will eventually return (not infinite loop)
+      func.setWillReturn(true);
+    } else if (attr == "nosync") {
+      // nosync: function does not synchronize with another thread
+      func.setNoSync(true);
+    } else if (attr == "readnone") {
+      // readnone: function does not access memory
+      // In LLVM 16+, this is expressed via memory(none)
+      func.setMemoryEffects(LLVM::MemoryEffectsAttr::get(
+          rewriter.getContext(),
+          /*other=*/LLVM::ModRefInfo::NoModRef,
+          /*argMem=*/LLVM::ModRefInfo::NoModRef,
+          /*inaccessibleMem=*/LLVM::ModRefInfo::NoModRef));
+    } else if (attr == "readonly") {
+      // readonly: function only reads memory
+      func.setMemoryEffects(LLVM::MemoryEffectsAttr::get(
+          rewriter.getContext(),
+          /*other=*/LLVM::ModRefInfo::Ref,
+          /*argMem=*/LLVM::ModRefInfo::Ref,
+          /*inaccessibleMem=*/LLVM::ModRefInfo::Ref));
     }
-    // Note: readnone can be set via passthrough attributes if needed
   }
   return func;
 }
@@ -59,8 +82,9 @@ Value TargetInfo::getLaneId(RewriterBase &rewriter, Location loc) const {
   auto i32Ty = rewriter.getI32Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {});
   
+  // lane.id is pure: readnone, nounwind, willreturn
   auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.lane.id", funcTy,
-                       {"nounwind"});
+                       {"readnone", "nounwind", "willreturn"});
   
   return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{}).getResult();
 }
@@ -70,8 +94,9 @@ Value TargetInfo::getWarpSizeValue(RewriterBase &rewriter, Location loc) const {
   auto i32Ty = rewriter.getI32Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {});
   
+  // warp.size is pure: readnone, nounwind, willreturn
   auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.warp.size", funcTy,
-                       {"nounwind"});
+                       {"readnone", "nounwind", "willreturn"});
   
   return LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{}).getResult();
 }
@@ -82,8 +107,9 @@ Value TargetInfo::getNumPrograms(RewriterBase &rewriter, Location loc,
   auto i32Ty = rewriter.getI32Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
   
+  // num.programs is pure: readnone, nounwind, willreturn
   auto funcOp = getOrInsertIntrinsic(rewriter, module, "llvm.custom.num.programs", funcTy,
-                       {"nounwind"});
+                       {"readnone", "nounwind", "willreturn"});
   
   Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
                                            rewriter.getI32IntegerAttr(static_cast<int32_t>(axis)));
@@ -138,8 +164,21 @@ void TargetInfo::barrier(Location loc, RewriterBase &rewriter,
                                        : "llvm.custom.barrier";
   auto funcTy = LLVM::LLVMFunctionType::get(voidTy, {});
   
+  // Barrier intrinsic attributes:
+  // - convergent: cannot be moved past control flow
+  // - nounwind: does not throw exceptions  
+  // Note: memory effects (ModRef on all memory) are set in getOrInsertIntrinsic
+  // to act as a full memory fence, preventing load/store reordering
   auto funcOp = getOrInsertIntrinsic(rewriter, module, intrinsicName, funcTy,
                        {"convergent", "nounwind"});
+  
+  // Set memory effects explicitly for barrier fence semantics
+  // This ensures the barrier acts as a full memory fence
+  funcOp.setMemoryEffects(LLVM::MemoryEffectsAttr::get(
+      rewriter.getContext(),
+      /*other=*/LLVM::ModRefInfo::ModRef,
+      /*argMem=*/LLVM::ModRefInfo::ModRef,
+      /*inaccessibleMem=*/LLVM::ModRefInfo::ModRef));
   
   LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{});
 }
@@ -245,8 +284,9 @@ Value TargetInfo::programId(RewriterBase &rewriter, Location loc,
   auto i32Ty = rewriter.getI32Type();
   auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
   
+  // program.id is pure: readnone, nounwind, willreturn
   auto funcOp = getOrInsertIntrinsic(rewriter, moduleOp, "llvm.custom.program.id", funcTy,
-                       {"nounwind"});
+                       {"readnone", "nounwind", "willreturn"});
   
   Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
                                            rewriter.getI32IntegerAttr(static_cast<int32_t>(axis)));

@@ -1,5 +1,6 @@
 add_triton_library(TritonCustomToLLVM
     BarrierOpToLLVM.cpp
+    DotOpToLLVM.cpp
     ElementwiseOpToLLVM.cpp
     LoadStoreOpToLLVM.cpp
     SPMDOpToLLVM.cpp

@@ -38,6 +38,13 @@ void populateElementwiseOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                          const TargetInfo &targetInfo,
                                          PatternBenefit benefit);
 
+/// Populate dot operation patterns (SIMT FMA fallback).
+void populateDotOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
+                                 RewritePatternSet &patterns,
+                                 ModuleAxisInfoAnalysis &axisInfoAnalysis,
+                                 const TargetInfo &targetInfo,
+                                 PatternBenefit benefit);
+
 } // namespace mlir::triton::Custom
 
 #endif // TRITON_THIRD_PARTY_CUSTOM_LIB_TRITONCUSTOMTOLLVM_PATTERNTRITONGPUOPTOLLVM_H_
