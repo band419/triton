@@ -56,22 +56,28 @@ LLVM::LLVMFuncOp TargetInfo::getOrInsertIntrinsic(
       func.setWillReturn(true);
     } else if (attr == "nosync") {
       // nosync: function does not synchronize with another thread
-      func.setNoSync(true);
+      // Note: nosync is not directly supported in new LLVM MLIR dialect
+      // It can be added via passthrough if needed, but we skip it for now
+      // as it's mainly an optimization hint
     } else if (attr == "readnone") {
       // readnone: function does not access memory
       // In LLVM 16+, this is expressed via memory(none)
-      func.setMemoryEffects(LLVM::MemoryEffectsAttr::get(
+      // Args: other, argMem, inaccessibleMem, errnoMem, targetMem0, targetMem1
+      func.setMemoryEffectsAttr(LLVM::MemoryEffectsAttr::get(
           rewriter.getContext(),
-          /*other=*/LLVM::ModRefInfo::NoModRef,
-          /*argMem=*/LLVM::ModRefInfo::NoModRef,
-          /*inaccessibleMem=*/LLVM::ModRefInfo::NoModRef));
+          llvm::ArrayRef<LLVM::ModRefInfo>{
+              LLVM::ModRefInfo::NoModRef, LLVM::ModRefInfo::NoModRef,
+              LLVM::ModRefInfo::NoModRef, LLVM::ModRefInfo::NoModRef,
+              LLVM::ModRefInfo::NoModRef, LLVM::ModRefInfo::NoModRef}));
     } else if (attr == "readonly") {
       // readonly: function only reads memory
-      func.setMemoryEffects(LLVM::MemoryEffectsAttr::get(
+      // Args: other, argMem, inaccessibleMem, errnoMem, targetMem0, targetMem1
+      func.setMemoryEffectsAttr(LLVM::MemoryEffectsAttr::get(
           rewriter.getContext(),
-          /*other=*/LLVM::ModRefInfo::Ref,
-          /*argMem=*/LLVM::ModRefInfo::Ref,
-          /*inaccessibleMem=*/LLVM::ModRefInfo::Ref));
+          llvm::ArrayRef<LLVM::ModRefInfo>{
+              LLVM::ModRefInfo::Ref, LLVM::ModRefInfo::Ref,
+              LLVM::ModRefInfo::Ref, LLVM::ModRefInfo::Ref,
+              LLVM::ModRefInfo::Ref, LLVM::ModRefInfo::Ref}));
     }
   }
   return func;
@@ -174,11 +180,13 @@ void TargetInfo::barrier(Location loc, RewriterBase &rewriter,
   
   // Set memory effects explicitly for barrier fence semantics
   // This ensures the barrier acts as a full memory fence
-  funcOp.setMemoryEffects(LLVM::MemoryEffectsAttr::get(
+  // Args: other, argMem, inaccessibleMem, errnoMem, targetMem0, targetMem1
+  funcOp.setMemoryEffectsAttr(LLVM::MemoryEffectsAttr::get(
       rewriter.getContext(),
-      /*other=*/LLVM::ModRefInfo::ModRef,
-      /*argMem=*/LLVM::ModRefInfo::ModRef,
-      /*inaccessibleMem=*/LLVM::ModRefInfo::ModRef));
+      llvm::ArrayRef<LLVM::ModRefInfo>{
+          LLVM::ModRefInfo::ModRef, LLVM::ModRefInfo::ModRef,
+          LLVM::ModRefInfo::ModRef, LLVM::ModRefInfo::ModRef,
+          LLVM::ModRefInfo::ModRef, LLVM::ModRefInfo::ModRef}));
   
   LLVM::CallOp::create(rewriter, loc, funcOp, ValueRange{});
 }

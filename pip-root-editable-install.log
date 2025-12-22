@@ -1,0 +1,108 @@
+Using pip 25.3 from /home/zick/miniconda3/envs/triton-dev/lib/python3.11/site-packages/pip (python 3.11)
+Obtaining file:///home/zick/prj/triton_custom
+  Checking if build backend supports build_editable: started
+  Running command Checking if build backend supports build_editable
+  Checking if build backend supports build_editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Running command Preparing editable metadata (pyproject.toml)
+  /home/zick/miniconda3/envs/triton-dev/lib/python3.11/site-packages/setuptools/_distutils/dist.py:289: UserWarning: Unknown distribution option: 'test_suite'
+    warnings.warn(msg)
+  /home/zick/miniconda3/envs/triton-dev/lib/python3.11/site-packages/setuptools/dist.py:759: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+  !!
+
+          ********************************************************************************
+          Please consider removing the following classifiers in favor of a SPDX license expression:
+
+          License :: OSI Approved :: MIT License
+
+          See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+          ********************************************************************************
+
+  !!
+    self._finalize_license_expression()
+  running dist_info
+  creating /tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info
+  writing /tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info/PKG-INFO
+  writing dependency_links to /tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info/dependency_links.txt
+  writing entry points to /tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info/entry_points.txt
+  writing requirements to /tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info/requires.txt
+  writing top-level names to /tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info/top_level.txt
+  writing manifest file '/tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info/SOURCES.txt'
+  reading manifest file '/tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info/SOURCES.txt'
+  reading manifest template 'MANIFEST.in'
+  adding license file 'LICENSE'
+  writing manifest file '/tmp/pip-modern-metadata-gxz6y0cs/triton.egg-info/SOURCES.txt'
+  creating '/tmp/pip-modern-metadata-gxz6y0cs/triton-3.6.0+git10b528b0.dist-info'
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: triton
+  Building editable for triton (pyproject.toml): started
+  Running command Building editable for triton (pyproject.toml)
+  /home/zick/miniconda3/envs/triton-dev/lib/python3.11/site-packages/setuptools/_distutils/dist.py:289: UserWarning: Unknown distribution option: 'test_suite'
+    warnings.warn(msg)
+  /home/zick/miniconda3/envs/triton-dev/lib/python3.11/site-packages/setuptools/dist.py:759: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+  !!
+
+          ********************************************************************************
+          Please consider removing the following classifiers in favor of a SPDX license expression:
+
+          License :: OSI Approved :: MIT License
+
+          See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+          ********************************************************************************
+
+  !!
+    self._finalize_license_expression()
+  running editable_wheel
+  creating symlink: /home/zick/prj/triton_custom/python/triton/backends/nvidia -> third_party/nvidia/backend
+  creating symlink: /home/zick/prj/triton_custom/python/triton/language/extra/cuda -> third_party/nvidia/language/cuda
+  creating symlink: /home/zick/prj/triton_custom/python/triton/tools/extra/cuda -> third_party/nvidia/tools/cuda
+  creating symlink: /home/zick/prj/triton_custom/python/triton/backends/amd -> third_party/amd/backend
+  creating symlink: /home/zick/prj/triton_custom/python/triton/language/extra/hip -> third_party/amd/language/hip
+  creating symlink: /home/zick/prj/triton_custom/python/triton/tools/extra/hip -> third_party/amd/tools/hip
+  creating symlink: /home/zick/prj/triton_custom/python/triton/backends/custom -> third_party/custom/backend
+  creating symlink: /home/zick/prj/triton_custom/python/triton/profiler -> /home/zick/prj/triton_custom/third_party/proton/proton
+  creating /tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info
+  writing /tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info/PKG-INFO
+  writing dependency_links to /tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info/dependency_links.txt
+  writing entry points to /tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info/entry_points.txt
+  writing requirements to /tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info/requires.txt
+  writing top-level names to /tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info/top_level.txt
+  writing manifest file '/tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info/SOURCES.txt'
+  reading manifest file '/tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info/SOURCES.txt'
+  reading manifest template 'MANIFEST.in'
+  adding license file 'LICENSE'
+  writing manifest file '/tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton.egg-info/SOURCES.txt'
+  creating '/tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton-3.6.0+git10b528b0.dist-info'
+  creating /tmp/pip-ephem-wheel-cache-wvx8auvt/wheels/32/ae/bc/94ded20b0f2c7a2f091dfe2f26cc0d86e64e03df0805ad65ed/tmp733_1t8c/.tmp-sbm66ttq/triton-3.6.0+git10b528b0.dist-info/WHEEL
+  running build_py
+  running build_ext
+  creating symlink: /home/zick/.triton/llvm/llvm-ubuntu-x64 -> /home/zick/.triton/llvm/llvm-a992f294-ubuntu-x64
+  CMake Deprecation Warning at CMakeLists.txt:6 (cmake_policy):
+    The OLD behavior for policy CMP0116 will be removed from a future version
+    of CMake.
+
+    The cmake-policies(7) manual explains that the OLD behaviors of all
+    policies are deprecated and that a policy should be set to OLD only under
+    specific short-term circumstances.  Projects should be ported to the NEW
+    behavior and not rely on setting a policy to OLD.
+
+
+  -- Could not find ccache. Consider installing ccache to speed up compilation.
+  -- Adding Python module
+  -- Found Python3: /home/zick/miniconda3/envs/triton-dev/bin/python (found version "3.11.14") found components: Development.Module Interpreter
+  -- Found pybind11: /home/zick/miniconda3/envs/triton-dev/lib/python3.11/site-packages/pybind11/include (found version "3.0.1")
+  -- Found LLD distro-package @ /home/zick/.triton/llvm/llvm-a992f294-ubuntu-x64/lib/cmake/lld and LLD include dirs @ /home/zick/.triton/llvm/llvm-a992f294-ubuntu-x64/include
+  -- Found Python3: /home/zick/miniconda3/envs/triton-dev/bin/python (found version "3.11.14") found components: Interpreter Development.Module
+  -- Collecting object files from ProtonTraceDataIO
+  -- Collecting object files from Proton
+  -- Collecting object files from ProtonContext
+  -- Collecting object files from ProtonData
+  -- Collecting object files from ProtonDriver
+  -- Collecting object files from ProtonRuntime
+  -- Collecting object files from ProtonProfiler
+  -- Collecting object files from ProtonSession
+  -- Triton backends tuple: nvidia,amd,custom,proton
+  -- Configuring done (1.9s)
+  -- Generating done (1.2s)
+  -- Build files have been written to: /home/zick/prj/triton_custom/build/cmake.linux-x86_64-cpython-3.11
+  creating symlink: /home/zick/prj/triton_custom/compile_commands.json -> /home/zick/prj/triton_custom/build/cmake.linux-x86_64-cpython-3.11/compile_commands.json

@@ -100,6 +100,10 @@ export LLVM_BUILD_TYPE=RelWithDebInfo    # 编译类型
 export LLVM_TARGETS="Native;NVPTX;AMDGPU" # 目标架构
 export LLVM_PROJECTS="mlir;llvm;lld"      # 需要的子项目
 
+# 重要: 使用 fork 仓库以确保版本稳定
+export LLVM_PROJECT_URL="https://github.com/band419/llvm-project"
+export LLVM_COMMIT_HASH="custom-simt-backend"  # 使用分支名而不是 hash
+
 # 执行编译 (首次约 30-60 分钟)
 ./scripts/build-llvm-project.sh
 
@@ -120,13 +124,19 @@ echo "LLVM commit: $LLVM_HASH"
 # 当前: a992f29451b9e140424f35ac5e20177db4afbdc0
 
 # 如果 llvm-project 不存在，clone 它
+# 使用 fork 仓库以确保版本稳定
 if [ ! -d llvm-project ]; then
-    git clone https://github.com/llvm/llvm-project.git
+    git clone https://github.com/band419/llvm-project.git
 fi
 
 cd llvm-project
-git fetch origin $LLVM_HASH
-git checkout $LLVM_HASH
+
+# 切换到 custom-simt-backend 分支
+git fetch origin custom-simt-backend
+git checkout custom-simt-backend
+
+# 添加上游仓库以便同步更新 (可选)
+git remote add upstream https://github.com/llvm/llvm-project.git
 
 # 配置 CMake
 mkdir -p build && cd build

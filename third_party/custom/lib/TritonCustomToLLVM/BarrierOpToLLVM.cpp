@@ -37,12 +37,14 @@ struct BarrierOpConversion : public ConvertOpToLLVMPattern<gpu::BarrierOp> {
       func.setNoUnwind(true);
       // Barrier acts as a full memory fence: reads and writes to all memory
       // This ensures loads/stores cannot be reordered across the barrier
-      // Memory effects: inaccessiblemem_or_argmemonly (affects all observable memory)
-      func.setMemoryEffects(LLVM::MemoryEffectsAttr::get(
+      // Memory effects: affects all observable memory
+      // Args: other, argMem, inaccessibleMem, errnoMem, targetMem0, targetMem1
+      func.setMemoryEffectsAttr(LLVM::MemoryEffectsAttr::get(
           rewriter.getContext(),
-          /*other=*/LLVM::ModRefInfo::ModRef,      // Fence affects "other" memory
-          /*argMem=*/LLVM::ModRefInfo::ModRef,     // Fence affects argument memory
-          /*inaccessibleMem=*/LLVM::ModRefInfo::ModRef));  // Fence affects inaccessible memory
+          llvm::ArrayRef<LLVM::ModRefInfo>{
+              LLVM::ModRefInfo::ModRef, LLVM::ModRefInfo::ModRef,
+              LLVM::ModRefInfo::ModRef, LLVM::ModRefInfo::ModRef,
+              LLVM::ModRefInfo::ModRef, LLVM::ModRefInfo::ModRef}));
     }
 
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, TypeRange{},

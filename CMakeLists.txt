@@ -180,6 +180,34 @@ if(TRITON_BUILD_PYTHON_MODULE)
   find_package(Python3 REQUIRED COMPONENTS Development.Module Interpreter)
   find_package(pybind11 CONFIG REQUIRED HINTS "${Python3_SITELIB}")
 
+  # The core library includes generated (.inc) headers from some in-tree backends'
+  # dialects. If a backend isn't enabled in TRITON_CODEGEN_BACKENDS, we still need
+  # to run tablegen for its include/ targets and make `triton` depend on them.
+  set(_triton_extra_tablegen_targets "")
+  list(FIND TRITON_CODEGEN_BACKENDS "nvidia" _triton_has_nvidia_backend)
+  if(_triton_has_nvidia_backend EQUAL -1)
+    add_subdirectory(third_party/nvidia/include)
+    list(APPEND _triton_extra_tablegen_targets
+      NVGPUTableGen
+      NVGPUAttrDefsIncGen
+      NVWSTableGen
+      NVWSAttrDefsIncGen
+      NVWSTransformsIncGen
+      NVGPUConversionPassIncGen
+      TritonNVIDIAGPUConversionPassIncGen
+    )
+  endif()
+  list(FIND TRITON_CODEGEN_BACKENDS "amd" _triton_has_amd_backend)
+  if(_triton_has_amd_backend EQUAL -1)
+    add_subdirectory(third_party/amd/include)
+    list(APPEND _triton_extra_tablegen_targets
+      TritonAMDGPUTableGen
+      TritonAMDGPUAttrDefsIncGen
+      TritonAMDGPUTransformsIncGen
+      TritonAMDGPUConversionPassIncGen
+    )
+  endif()
+
   foreach(CODEGEN_BACKEND ${TRITON_CODEGEN_BACKENDS})
     add_subdirectory(third_party/${CODEGEN_BACKEND})
   endforeach()
@@ -288,6 +316,10 @@ if(TRITON_BUILD_PYTHON_MODULE)
                   ${PYTHON_SRC_PATH}/interpreter.cc
                   ${PYTHON_SRC_PATH}/llvm.cc
                   ${PYTHON_SRC_PATH}/specialize.cc)
+
+  if(_triton_extra_tablegen_targets)
+    add_dependencies(triton ${_triton_extra_tablegen_targets})
+  endif()
 
   # Link triton with its dependencies
   target_link_libraries(triton PRIVATE ${TRITON_LIBRARIES})

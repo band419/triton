@@ -1,0 +1,3 @@
+Using pip 25.3 from /home/zick/miniconda3/envs/triton-dev/lib/python3.11/site-packages/pip (python 3.11)
+Obtaining file:///home/zick/prj/triton_custom/python
+ERROR: file:///home/zick/prj/triton_custom/python does not appear to be a Python project: neither 'setup.py' nor 'pyproject.toml' found.
