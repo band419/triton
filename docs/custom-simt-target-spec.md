@@ -41,32 +41,32 @@ From `gpnpu_spec/Vector`:
 - Predicate regs are caller-save; spilling/stacking strategy is TBD in the spec.
 
 1. **Special registers / builtins available** (list)
-   - CSR_SIMT_TID_X (0x7C0)
+   - CSR_SIMT_TID_X (0xFC0)
      功能：返回CTA内 lane 的全局线程 ID（threadIdx.x）
      取值范围：0 到 (CTA_size - 1), launch后只读
      使用场景：用于索引 CTA 内的数据，计算全局偏移量
-     示例：csrr t0, 0x7C0 读取当前 lane 的线程 ID
+   示例：csrr t0, 0xFC0 读取当前 lane 的线程 ID
 
-   - CSR_SIMT_NTID_X (0x7C3)
+   - CSR_SIMT_NTID_X (0xFCC)
      功能：返回 CTA 的维度大小（blockDim.x）
      取值范围：通常为 32 的倍数
      使用场景：用于边界检查，计算循环次数
 
-   - CSR_SIMT_CTAID_X (0x7C6)
+   - CSR_SIMT_CTAID_X (0xFD8)
      功能：返回GRID内当前 CTA 的 ID（blockIdx.x）
      取值范围：0 到 (grid_size - 1),, launch后只读
      使用场景：用于多 CTA 场景下的数据分区
      注：目前仅有一个维度X，未来会有Y和Z维度
 
-   - CSR_SIMT_LANEID (0x7CD)
+   - CSR_SIMT_LANEID (0xFE4)
      功能：返回当前 lane 在 warpWARP 内的索引
      取值范围：0 到 (warp_size - 1)，通常为 0-31, 只读
      使用场景：用于 lane-local 计算、栈偏移计算
-     示例：csrr t0, 0x7CD 读取当前 lane 的 lane ID
+   示例：csrr t0, 0xFE4 读取当前 lane 的 lane ID
 
    Additional CSRs mentioned in `gpnpu_spec/Vector` (confirm addresses on your RTL/model):
 
-   - `CSR_SIMT_WARPSIZE` (`0x8C3` / `0x7CC`): RO warp size
+   - `CSR_SIMT_WARPSIZE` (`0xFE8`): RO warp size
    - `CSR_SIMT_LMASK_ACT` (`0x8E0`): RO active lane mask
 
 ---

@@ -1,0 +1,3 @@
+[submodule "docs/gpnpu_spec"]
+	path = docs/gpnpu_spec
+	url = https://github.com/3YCArch/gpnpu_spec.git

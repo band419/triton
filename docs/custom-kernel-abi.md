@@ -67,7 +67,7 @@ define void @kernel_name(
 declare i32 @llvm.custom.program.id(i32 %axis) #readnone
 
 ; axis: 0=x, 1=y, 2=z
-; 映射: CSR_SIMT_CTAID_X (0x7C6)
+; 映射: CSR_SIMT_CTAID_X (0xFD8)
 ```
 
 ### 3.2 Thread ID
@@ -77,7 +77,7 @@ declare i32 @llvm.custom.program.id(i32 %axis) #readnone
 declare i32 @llvm.custom.thread.id(i32 %axis) #readnone
 
 ; axis: 0=x, 1=y, 2=z
-; 映射: CSR_SIMT_TID_X (0x7C0)
+; 映射: CSR_SIMT_TID_X (0xFC0)
 ```
 
 ### 3.3 Block/Grid Dimensions
@@ -85,7 +85,7 @@ declare i32 @llvm.custom.thread.id(i32 %axis) #readnone
 ```llvm
 ; 获取 block 维度 (blockDim)
 declare i32 @llvm.custom.block.dim(i32 %axis) #readnone
-; 映射: CSR_SIMT_NTID_X (0x7C3)
+; 映射: CSR_SIMT_NTID_X (0xFCC)
 
 ; 获取 grid 维度 (gridDim)
 declare i32 @llvm.custom.grid.dim(i32 %axis) #readnone
@@ -97,11 +97,11 @@ declare i32 @llvm.custom.grid.dim(i32 %axis) #readnone
 ```llvm
 ; 获取 lane ID (0..warp_size-1)
 declare i32 @llvm.custom.lane.id() #readnone
-; 映射: CSR_SIMT_LANEID (0x7CD)
+; 映射: CSR_SIMT_LANEID (0xFE4)
 
 ; 获取 warp size
 declare i32 @llvm.custom.warp.size() #readnone
-; 映射: CSR_SIMT_WARPSIZE (0x7CC)
+; 映射: CSR_SIMT_WARPSIZE (0xFE8)
 ```
 
 ### 3.5 同步
@@ -110,7 +110,7 @@ declare i32 @llvm.custom.warp.size() #readnone
 ; CTA barrier（所有 warp 同步）
 declare void @llvm.custom.barrier() #convergent #nounwind
 
-; 映射: bar.sync 或 fence + custom barrier instruction
+; 映射: fence + bar.sync（bar.sync 只保证 CTA 同步，不保证 fence；若 LLIR barrier 语义要求 sync+fence，则需要显式 fence）
 ```
 
 ### 3.6 Cross-lane 操作

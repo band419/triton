@@ -38,7 +38,7 @@ declare i32 @llvm.custom.program.id(i32 %axis) #readnone_attrs
 
 **属性**: `readnone`, `nounwind`, `willreturn`
 
-**硬件映射**: `csrr t0, CSR_SIMT_CTAID_X` (0x7C6)
+**硬件映射**: `csrr t0, CSR_SIMT_CTAID_X` (0xFD8)
 
 ---
 
@@ -56,7 +56,7 @@ declare i32 @llvm.custom.thread.id(i32 %axis) #readnone_attrs
 
 **属性**: `readnone`, `nounwind`, `willreturn`
 
-**硬件映射**: `csrr t0, CSR_SIMT_TID_X` (0x7C0)
+**硬件映射**: `csrr t0, CSR_SIMT_TID_X` (0xFC0)
 
 ---
 
@@ -73,7 +73,7 @@ declare i32 @llvm.custom.lane.id() #readnone_attrs
 
 **属性**: `readnone`, `nounwind`, `willreturn`
 
-**硬件映射**: `csrr t0, CSR_SIMT_LANEID` (0x7CD)
+**硬件映射**: `csrr t0, CSR_SIMT_LANEID` (0xFE4)
 
 ---
 
@@ -86,7 +86,7 @@ declare i32 @llvm.custom.warp.size() #readnone_attrs
 
 **属性**: `readnone`, `nounwind`, `willreturn`
 
-**硬件映射**: `csrr t0, CSR_SIMT_WARPSIZE` (0x7CC) 或编译时常量
+**硬件映射**: `csrr t0, CSR_SIMT_WARPSIZE` (0xFE8) 或编译时常量
 
 ---
 
@@ -112,7 +112,7 @@ declare i32 @llvm.custom.block.dim(i32 %axis) #readnone_attrs
 
 **属性**: `readnone`, `nounwind`, `willreturn`
 
-**硬件映射**: `csrr t0, CSR_SIMT_NTID_X` (0x7C3)
+**硬件映射**: `csrr t0, CSR_SIMT_NTID_X` (0xFCC)
 
 ---
 
@@ -151,7 +151,7 @@ declare void @llvm.custom.barrier() #convergent_attrs
 
 **关键**: `convergent` 属性防止 LLVM 优化器将此调用移动到条件分支之外。
 
-**硬件映射**: `bar.sync` 或专用 CTA barrier 指令
+**硬件映射**: `fence` + `bar.sync`（其中 `bar.sync` 只保证 CTA 级别同步，不保证 fence；若 LLIR barrier 语义要求 sync+fence，则需要显式 `fence`）
 
 **内存语义**: Barrier 同时充当 memory fence，保证 barrier 前后的内存访问可见性。
 
@@ -166,7 +166,7 @@ declare void @llvm.custom.warp.barrier() #convergent_attrs
 
 **属性**: `convergent`, `nounwind`
 
-**硬件映射**: Warp-level sync，或在硬件无显式 warp barrier 时降级为 CTA barrier
+**硬件映射**: v1 可降级为 CTA barrier（`fence` + `bar.sync`）；若后续 ISA 增加 warp sync 再单独 lower
 
 ---
 
@@ -190,6 +190,8 @@ declare float @llvm.custom.shuffle.xor.f32(float %val, i32 %mask) #convergent_at
 
 **注意**: 如果目标 lane 不活跃，结果未定义。
 
+**Lowering 约定（v1）**：后端/编译器统一将 `shuffle.*` 降到 `SHFL.IDX`。
+
 ---
 
 #### `llvm.custom.shuffle.up`
@@ -200,6 +202,8 @@ declare i32 @llvm.custom.shuffle.up.i32(i32 %val, i32 %delta) #convergent_attrs
 ```
 
 **属性**: `convergent`, `nounwind`
+
+**Lowering 约定（v1）**：降到 `SHFL.IDX`，其中 `src_lane = lane_id - delta`。
 
 ---
 
@@ -212,6 +216,8 @@ declare i32 @llvm.custom.shuffle.down.i32(i32 %val, i32 %delta) #convergent_attr
 
 **属性**: `convergent`, `nounwind`
 
+**Lowering 约定（v1）**：降到 `SHFL.IDX`，其中 `src_lane = lane_id + delta`。
+
 ---
 
 #### `llvm.custom.shuffle.idx`
@@ -222,6 +228,8 @@ declare i32 @llvm.custom.shuffle.idx.i32(i32 %val, i32 %src_lane) #convergent_at
 ```
 
 **属性**: `convergent`, `nounwind`
+
+**Lowering 约定（v1）**：直接 lower 到 `SHFL.IDX`。
 
 ---
 
@@ -359,11 +367,11 @@ attributes #2 = { nounwind }
 
 | Intrinsic | CSR/Instruction | 地址/Opcode |
 |-----------|-----------------|-------------|
-| program.id | CSR_SIMT_CTAID_X | 0x7C6 |
-| thread.id | CSR_SIMT_TID_X | 0x7C0 |
-| lane.id | CSR_SIMT_LANEID | 0x7CD |
-| warp.size | CSR_SIMT_WARPSIZE | 0x7CC |
-| block.dim | CSR_SIMT_NTID_X | 0x7C3 |
+| program.id | CSR_SIMT_CTAID_X | 0xFD8 |
+| thread.id | CSR_SIMT_TID_X | 0xFC0 |
+| lane.id | CSR_SIMT_LANEID | 0xFE4 |
+| warp.size | CSR_SIMT_WARPSIZE | 0xFE8 |
+| block.dim | CSR_SIMT_NTID_X | 0xFCC |
 | barrier | bar.sync | SIMT extension |
 | shuffle | Cross-lane unit | Opcode 0x0B |
 | ballot | Cross-lane unit | Opcode 0x0B |
