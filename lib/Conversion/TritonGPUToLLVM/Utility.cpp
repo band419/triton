@@ -544,7 +544,11 @@ SmallVector<Value> lowerLdSt(
   auto vals = to_vector(valsArray);
   bool isStore = !vals.empty();
   auto b = TritonLLVMOpBuilder(loc, rewriter);
-  auto smemPtrTy = ptr_ty(ctx, 3);
+  // Do not hardcode addrspace(3). The "shared" scratch base can be redirected
+  // to other address spaces (e.g. global scratch) by the target/pipeline.
+  auto smemPtrTy = dyn_cast<LLVM::LLVMPointerType>(smemBase.getType());
+  if (!smemPtrTy)
+    smemPtrTy = ptr_ty(ctx, targetInfo.getSharedAddressSpace());
   auto kReg = str_attr("register");
   auto kLane = str_attr("lane");
   auto kWarp = str_attr("warp");
@@ -1182,8 +1186,6 @@ Value getProfileScratchPtr(Location loc, RewriterBase &rewriter,
 
 Value getSharedMemoryBase(Location loc, RewriterBase &rewriter,
                           const TargetInfoBase &target, Operation *op) {
-  auto ptrTy = LLVM::LLVMPointerType::get(rewriter.getContext(),
-                                          target.getSharedAddressSpace());
   auto func = op->template getParentOfType<FunctionOpInterface>();
   if (!func)
     func = cast<FunctionOpInterface>(op);
@@ -1194,9 +1196,28 @@ Value getSharedMemoryBase(Location loc, RewriterBase &rewriter,
                       .getZExtValue();
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   Value offVal = b.i32_val(offset);
-  Value base =
-      b.gep(ptrTy, i8_ty, LLVM::getStackPointer(rewriter, func), offVal);
-  return base;
+
+  // Custom backends may emulate CTA scratch/shared exchanges using the global
+  // scratch buffer instead of real shared memory. In that case, the pipeline
+  // still runs AllocateSharedMemory to attach `allocation.offset` and `ttg.shared`,
+  // but we redirect the shared base to global scratch.
+  //
+  // NOTE: This path is selected by setting `ttg.shared_memory_model` on the
+  // module to the string "global_scratch".
+  if (auto mod = func->getParentOfType<ModuleOp>()) {
+    if (auto modelAttr =
+            mod->getAttrOfType<StringAttr>("ttg.shared_memory_model")) {
+      if (modelAttr.getValue() == "global_scratch") {
+        // getGlobalScratchPtr already returns a per-program/per-CTA base for
+        // kernels (and a plain argument base for device functions).
+        return LLVM::getGlobalScratchPtr(loc, rewriter, target, func, offVal);
+      }
+    }
+  }
+
+  auto ptrTy = LLVM::LLVMPointerType::get(rewriter.getContext(),
+                                         target.getSharedAddressSpace());
+  return b.gep(ptrTy, i8_ty, LLVM::getStackPointer(rewriter, func), offVal);
 }
 
 // Extract the bits of `a` that are set in `mask`

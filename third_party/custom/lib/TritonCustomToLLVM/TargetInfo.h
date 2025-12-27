@@ -10,9 +10,9 @@ namespace mlir::triton::Custom {
 /// TargetInfo for Custom SIMT backend.
 ///
 /// This class implements the TargetInfoBase interface using LLVM intrinsics
-/// that will be lowered by a custom LLVM backend or external codegen.
+/// that will be lowered by the RISCV SIMT LLVM backend.
 /// All SIMT operations (barrier, shuffle, program_id, etc.) are represented
-/// as calls to custom intrinsics (llvm.custom.*).
+/// as calls to RISCV SIMT intrinsics (llvm.riscv.simt.*).
 class TargetInfo : public mlir::triton::TargetInfoBase {
 public:
   explicit TargetInfo(int32_t warpSize = 32) : warpSize_(warpSize) {}
@@ -88,13 +88,13 @@ public:
                                         LLVM::LLVMFunctionType type,
                                         ArrayRef<StringRef> attrs = {}) const;
 
-  /// Get lane ID (0..warp_size-1) via llvm.custom.lane.id intrinsic
+  /// Get lane ID (0..warp_size-1) via llvm.riscv.simt.lane.id intrinsic
   Value getLaneId(RewriterBase &rewriter, Location loc) const;
 
-  /// Get warp size via llvm.custom.warp.size intrinsic
+  /// Get warp size via llvm.riscv.simt.warp.size intrinsic
   Value getWarpSizeValue(RewriterBase &rewriter, Location loc) const;
 
-  /// Get number of programs via llvm.custom.num.programs intrinsic
+  /// Get number of programs via llvm.riscv.simt.num.programs intrinsic
   Value getNumPrograms(RewriterBase &rewriter, Location loc,
                        ProgramIDDim axis) const;
 

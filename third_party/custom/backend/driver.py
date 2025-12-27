@@ -25,7 +25,7 @@ Kernel ABI Contract (Phase B1):
 - Kernel parameters are passed as expanded arguments (not a single param block pointer)
 - Pointer arguments: 32-bit addresses pointing to global memory (addrspace 1)
 - Scalar arguments: i32, i64, f32, f16 passed directly
-- SIMT context (program_id, thread_id, etc.) accessed via llvm.custom.* intrinsics
+- SIMT context (program_id, thread_id, etc.) accessed via llvm.riscv.simt.* intrinsics
 - See docs/custom-kernel-abi.md for full specification
 """
 

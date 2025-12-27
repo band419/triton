@@ -40,7 +40,7 @@ namespace {
 // GPU Dialect to Custom LLVM Conversion Patterns
 // ============================================================================
 
-/// Convert mlir::gpu::ThreadIdOp to llvm.custom.thread.id intrinsic
+/// Convert mlir::gpu::ThreadIdOp to llvm.riscv.simt.thread.id intrinsic
 struct ThreadIdOpConversion
     : public ConvertOpToLLVMPattern<mlir::gpu::ThreadIdOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
@@ -54,11 +54,12 @@ struct ThreadIdOpConversion
     auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
 
     // Get or insert the thread id intrinsic declaration
-    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.thread.id")) {
+    // Maps to CSR_SIMT_TID_X (0xFC0)
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.riscv.simt.thread.id")) {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointToStart(module.getBody());
       auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
-                                           "llvm.custom.thread.id", funcTy,
+                                           "llvm.riscv.simt.thread.id", funcTy,
                                            LLVM::Linkage::External);
       func.setNoUnwind(true);
     }
@@ -79,7 +80,7 @@ struct ThreadIdOpConversion
     Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
                                              rewriter.getI32IntegerAttr(axis));
     auto call = LLVM::CallOp::create(rewriter, loc, i32Ty,
-                                     "llvm.custom.thread.id",
+                                     "llvm.riscv.simt.thread.id",
                                      ValueRange{axisVal});
     // Convert i32 to index type
     Value result = arith::IndexCastOp::create(rewriter, loc,
@@ -90,7 +91,7 @@ struct ThreadIdOpConversion
   }
 };
 
-/// Convert mlir::gpu::BlockIdOp to llvm.custom.block.id intrinsic
+/// Convert mlir::gpu::BlockIdOp to llvm.riscv.simt.block.id intrinsic
 struct BlockIdOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::BlockIdOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
@@ -103,11 +104,12 @@ struct BlockIdOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::BlockIdOp>
     auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
 
     // Get or insert the block id intrinsic declaration
-    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.block.id")) {
+    // Maps to CSR_SIMT_CTAID_X (0xFD8)
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.riscv.simt.block.id")) {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointToStart(module.getBody());
       auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
-                                           "llvm.custom.block.id", funcTy,
+                                           "llvm.riscv.simt.block.id", funcTy,
                                            LLVM::Linkage::External);
       func.setNoUnwind(true);
     }
@@ -127,7 +129,7 @@ struct BlockIdOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::BlockIdOp>
     Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
                                              rewriter.getI32IntegerAttr(axis));
     auto call = LLVM::CallOp::create(rewriter, loc, i32Ty,
-                                     "llvm.custom.block.id",
+                                     "llvm.riscv.simt.block.id",
                                      ValueRange{axisVal});
     Value result = arith::IndexCastOp::create(rewriter, loc,
                                               rewriter.getIndexType(),
@@ -150,11 +152,12 @@ struct BlockDimOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::BlockDimO
     auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
 
     // Get or insert the block dim intrinsic declaration
-    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.block.dim")) {
+    // Maps to CSR_SIMT_NTID_X (0xFCC)
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.riscv.simt.block.dim")) {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointToStart(module.getBody());
       auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
-                                           "llvm.custom.block.dim", funcTy,
+                                           "llvm.riscv.simt.block.dim", funcTy,
                                            LLVM::Linkage::External);
       func.setNoUnwind(true);
     }
@@ -174,7 +177,7 @@ struct BlockDimOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::BlockDimO
     Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
                                              rewriter.getI32IntegerAttr(axis));
     auto call = LLVM::CallOp::create(rewriter, loc, i32Ty,
-                                     "llvm.custom.block.dim",
+                                     "llvm.riscv.simt.block.dim",
                                      ValueRange{axisVal});
     Value result = arith::IndexCastOp::create(rewriter, loc,
                                               rewriter.getIndexType(),
@@ -197,11 +200,12 @@ struct GridDimOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::GridDimOp>
     auto funcTy = LLVM::LLVMFunctionType::get(i32Ty, {i32Ty});
 
     // Get or insert the grid dim intrinsic declaration
-    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.grid.dim")) {
+    // Maps to grid_size from kernel descriptor
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.riscv.simt.grid.dim")) {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointToStart(module.getBody());
       auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
-                                           "llvm.custom.grid.dim", funcTy,
+                                           "llvm.riscv.simt.grid.dim", funcTy,
                                            LLVM::Linkage::External);
       func.setNoUnwind(true);
     }
@@ -221,7 +225,7 @@ struct GridDimOpConversion : public ConvertOpToLLVMPattern<mlir::gpu::GridDimOp>
     Value axisVal = LLVM::ConstantOp::create(rewriter, loc, i32Ty,
                                              rewriter.getI32IntegerAttr(axis));
     auto call = LLVM::CallOp::create(rewriter, loc, i32Ty,
-                                     "llvm.custom.grid.dim",
+                                     "llvm.riscv.simt.grid.dim",
                                      ValueRange{axisVal});
     Value result = arith::IndexCastOp::create(rewriter, loc,
                                               rewriter.getIndexType(),

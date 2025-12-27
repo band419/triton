@@ -200,8 +200,8 @@ def test_address_space_global(llir: str) -> TestResult:
 def test_simt_intrinsics(llir: str) -> TestResult:
     """Test that SIMT intrinsics are present and correctly named."""
     expected_intrinsics = [
-        "llvm.custom.program.id",
-        "llvm.custom.thread.id",
+        "llvm.riscv.simt.program.id",
+        "llvm.riscv.simt.thread.id",
     ]
     
     found = []
@@ -214,9 +214,9 @@ def test_simt_intrinsics(llir: str) -> TestResult:
             missing.append(intrinsic)
     
     # At least program.id should be present
-    if "llvm.custom.program.id" not in found:
+    if "llvm.riscv.simt.program.id" not in found:
         return TestResult("SIMT intrinsics", False,
-                         "Missing llvm.custom.program.id intrinsic",
+                         "Missing llvm.riscv.simt.program.id intrinsic",
                          f"Found: {found}")
     
     return TestResult("SIMT intrinsics", True,

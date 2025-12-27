@@ -294,9 +294,9 @@ def test_no_ptx_asm(llir: str) -> TestResult:
 def test_custom_intrinsics_present(llir: str) -> TestResult:
     """Test that custom intrinsics are present."""
     expected_intrinsics = [
-        "llvm.custom.program.id",
-        # "llvm.custom.lane.id",  # May not be used in simple kernel
-        # "llvm.custom.barrier",  # May not be used in simple kernel
+        "llvm.riscv.simt.program.id",
+        # "llvm.riscv.simt.lane.id",  # May not be used in simple kernel
+        # "llvm.riscv.simt.barrier",  # May not be used in simple kernel
     ]
     
     found = []
@@ -309,8 +309,8 @@ def test_custom_intrinsics_present(llir: str) -> TestResult:
             missing.append(intrinsic)
     
     # Also check for thread.id which may be used instead of lane.id
-    if "@llvm.custom.thread.id" in llir:
-        found.append("llvm.custom.thread.id")
+    if "@llvm.riscv.simt.thread.id" in llir:
+        found.append("llvm.riscv.simt.thread.id")
     
     if not found:
         return TestResult(

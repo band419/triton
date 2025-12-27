@@ -14,7 +14,7 @@ using namespace mlir;
 
 namespace {
 
-/// Convert GetProgramIdOp to llvm.custom.program.id intrinsic
+/// Convert GetProgramIdOp to llvm.riscv.simt.program.id intrinsic
 struct GetProgramIdOpConversion
     : public ConvertOpToLLVMPattern<triton::GetProgramIdOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
@@ -55,7 +55,7 @@ private:
   const mlir::triton::Custom::TargetInfo &targetInfo;
 };
 
-/// Convert GetNumProgramsOp to llvm.custom.num.programs intrinsic
+/// Convert GetNumProgramsOp to llvm.riscv.simt.num.programs intrinsic
 struct GetNumProgramsOpConversion
     : public ConvertOpToLLVMPattern<triton::GetNumProgramsOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;

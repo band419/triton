@@ -6,7 +6,7 @@ This script validates that the custom backend correctly implements
 the intrinsic specification as defined in docs/custom-intrinsic-spec.md.
 
 Tests:
-1. Intrinsic naming convention (llvm.custom.*)
+1. Intrinsic naming convention (llvm.riscv.simt.*)
 2. Intrinsic attributes (convergent, readnone, nounwind)
 3. Intrinsic declarations present
 4. Barrier convergent attribute (critical for correctness)
@@ -40,56 +40,56 @@ class TestResult:
 # Expected intrinsic definitions with their required attributes
 INTRINSIC_SPEC = {
     # Pure intrinsics (readnone, nounwind, willreturn)
-    "llvm.custom.program.id": {
+    "llvm.riscv.simt.program.id": {
         "return_type": "i32",
         "params": ["i32"],
         "required_attrs": ["nounwind"],
         "optional_attrs": ["willreturn", "memory(none)"],
         "category": "simt",
     },
-    "llvm.custom.thread.id": {
+    "llvm.riscv.simt.thread.id": {
         "return_type": "i32",
         "params": ["i32"],
         "required_attrs": ["nounwind"],
         "optional_attrs": ["willreturn", "memory(none)"],
         "category": "simt",
     },
-    "llvm.custom.lane.id": {
+    "llvm.riscv.simt.lane.id": {
         "return_type": "i32",
         "params": [],
         "required_attrs": ["nounwind"],
         "optional_attrs": ["willreturn", "memory(none)"],
         "category": "simt",
     },
-    "llvm.custom.warp.size": {
+    "llvm.riscv.simt.warp.size": {
         "return_type": "i32",
         "params": [],
         "required_attrs": ["nounwind"],
         "optional_attrs": ["willreturn", "memory(none)"],
         "category": "simt",
     },
-    "llvm.custom.num.programs": {
+    "llvm.riscv.simt.num.programs": {
         "return_type": "i32",
         "params": ["i32"],
         "required_attrs": ["nounwind"],
         "optional_attrs": ["willreturn", "memory(none)"],
         "category": "simt",
     },
-    "llvm.custom.block.id": {
+    "llvm.riscv.simt.block.id": {
         "return_type": "i32",
         "params": ["i32"],
         "required_attrs": ["nounwind"],
         "optional_attrs": [],
         "category": "simt",
     },
-    "llvm.custom.block.dim": {
+    "llvm.riscv.simt.block.dim": {
         "return_type": "i32",
         "params": ["i32"],
         "required_attrs": ["nounwind"],
         "optional_attrs": [],
         "category": "simt",
     },
-    "llvm.custom.grid.dim": {
+    "llvm.riscv.simt.grid.dim": {
         "return_type": "i32",
         "params": ["i32"],
         "required_attrs": ["nounwind"],
@@ -97,42 +97,35 @@ INTRINSIC_SPEC = {
         "category": "simt",
     },
     # Convergent intrinsics (must have convergent attribute)
-    "llvm.custom.barrier": {
+    "llvm.riscv.simt.barrier": {
         "return_type": "void",
         "params": [],
         "required_attrs": ["convergent", "nounwind"],
         "optional_attrs": [],
         "category": "sync",
     },
-    "llvm.custom.warp.barrier": {
+    "llvm.riscv.simt.warp.barrier": {
         "return_type": "void",
         "params": [],
         "required_attrs": ["convergent", "nounwind"],
         "optional_attrs": [],
         "category": "sync",
     },
-    "llvm.custom.shuffle.xor": {
+    "llvm.riscv.simt.shfl.bfly": {
         "return_type": "i32",  # or type-polymorphic
         "params": ["i32", "i32"],
         "required_attrs": ["convergent", "nounwind"],
         "optional_attrs": [],
         "category": "shuffle",
     },
-    "llvm.custom.shuffle.up": {
+    "llvm.riscv.simt.shfl.idx": {
         "return_type": "i32",
         "params": ["i32", "i32"],
         "required_attrs": ["convergent", "nounwind"],
         "optional_attrs": [],
         "category": "shuffle",
     },
-    "llvm.custom.shuffle.idx": {
-        "return_type": "i32",
-        "params": ["i32", "i32"],
-        "required_attrs": ["convergent", "nounwind"],
-        "optional_attrs": [],
-        "category": "shuffle",
-    },
-    "llvm.custom.ballot": {
+    "llvm.riscv.simt.ballot.mask": {
         "return_type": "i32",
         "params": ["i1"],
         "required_attrs": ["convergent", "nounwind"],
@@ -223,7 +216,7 @@ def parse_intrinsic_declarations(llir: str) -> Dict[str, Dict]:
         params = match.group(3)
         attr_group = match.group(4)
         
-        if name.startswith("llvm.custom."):
+        if name.startswith("llvm.riscv.simt."):
             intrinsics[name] = {
                 "return_type": ret_type,
                 "params": params,
@@ -258,7 +251,7 @@ def test_intrinsic_naming(llir: str) -> TestResult:
     """Test that all custom intrinsics use correct naming convention."""
     intrinsics = parse_intrinsic_declarations(llir)
     
-    custom_intrinsics = [name for name in intrinsics if name.startswith("llvm.custom.")]
+    custom_intrinsics = [name for name in intrinsics if name.startswith("llvm.riscv.simt.")]
     
     # Check for NVIDIA intrinsics (should not be present)
     nvidia_intrinsics = [name for name in intrinsics if "nvvm" in name.lower()]
@@ -275,7 +268,7 @@ def test_intrinsic_naming(llir: str) -> TestResult:
         return TestResult(
             "Intrinsic naming",
             False,
-            "No llvm.custom.* intrinsics found"
+            "No llvm.riscv.simt.* intrinsics found"
         )
     
     return TestResult(
@@ -333,12 +326,11 @@ def test_convergent_intrinsics(llir: str) -> TestResult:
     attr_groups = parse_attribute_groups(llir)
     
     convergent_required = [
-        "llvm.custom.barrier",
-        "llvm.custom.warp.barrier",
-        "llvm.custom.shuffle.xor",
-        "llvm.custom.shuffle.up",
-        "llvm.custom.shuffle.idx",
-        "llvm.custom.ballot",
+        "llvm.riscv.simt.barrier",
+        "llvm.riscv.simt.warp.barrier",
+        "llvm.riscv.simt.shfl.bfly",
+        "llvm.riscv.simt.shfl.idx",
+        "llvm.riscv.simt.ballot.mask",
     ]
     
     found_convergent = []
@@ -390,11 +382,11 @@ def test_pure_intrinsics(llir: str) -> TestResult:
     attr_groups = parse_attribute_groups(llir)
     
     pure_intrinsics = [
-        "llvm.custom.program.id",
-        "llvm.custom.thread.id",
-        "llvm.custom.lane.id",
-        "llvm.custom.warp.size",
-        "llvm.custom.num.programs",
+        "llvm.riscv.simt.program.id",
+        "llvm.riscv.simt.thread.id",
+        "llvm.riscv.simt.lane.id",
+        "llvm.riscv.simt.warp.size",
+        "llvm.riscv.simt.num.programs",
     ]
     
     found_with_attrs = []

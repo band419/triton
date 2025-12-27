@@ -14,7 +14,7 @@ using namespace mlir;
 
 namespace {
 
-/// Convert gpu::BarrierOp to llvm.custom.barrier intrinsic
+/// Convert gpu::BarrierOp to llvm.riscv.simt.barrier intrinsic
 struct BarrierOpConversion : public ConvertOpToLLVMPattern<gpu::BarrierOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
@@ -26,11 +26,12 @@ struct BarrierOpConversion : public ConvertOpToLLVMPattern<gpu::BarrierOp> {
     auto funcTy = LLVM::LLVMFunctionType::get(voidTy, {});
 
     // Get or insert the barrier intrinsic declaration
-    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.custom.barrier")) {
+    // Maps to RISCV SIMT barrier: fence + bar.sync
+    if (!module.lookupSymbol<LLVM::LLVMFuncOp>("llvm.riscv.simt.barrier")) {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointToStart(module.getBody());
       auto func = LLVM::LLVMFuncOp::create(rewriter, module.getLoc(),
-                                           "llvm.custom.barrier", funcTy,
+                                           "llvm.riscv.simt.barrier", funcTy,
                                            LLVM::Linkage::External);
       // Barrier is convergent: cannot be moved past control flow
       func.setConvergent(true);
@@ -48,7 +49,7 @@ struct BarrierOpConversion : public ConvertOpToLLVMPattern<gpu::BarrierOp> {
     }
 
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, TypeRange{},
-                                               "llvm.custom.barrier",
+                                               "llvm.riscv.simt.barrier",
                                                ValueRange{});
     return success();
   }

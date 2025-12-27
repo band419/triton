@@ -293,12 +293,26 @@ def _lower_ttgir_to_llvm_custom(pm, mod, opt):
         from triton._C.libtriton import custom  # type: ignore
         warp_size = _get_custom_warp_size(opt)
         
-        # Note: No shared memory allocation for Custom backend (global memory only)
-        # This is a key difference from NVIDIA path which uses:
-        # - nvidia.passes.ttgpuir.add_allocate_shared_memory_nv
+        # Custom backend: emulate all CTA-level scratch/shared exchanges using
+        # global scratch (global memory), not real shared memory.
+        #
+        # However, many generic TTGIR→LLVM lowerings still rely on the presence
+        # of `allocation.offset` and `ttg.shared` metadata (normally produced by
+        # AllocateSharedMemory) to compute a base pointer for scratch buffers.
+        # We therefore run AllocateSharedMemory to attach offsets/sizes, and
+        # then redirect the shared base to global scratch during lowering.
+        mod.set_attr(
+            "ttg.shared_memory_model",
+            ir.builder(mod.context).get_string_attr("global_scratch"),
+        )
         
         if knobs.compilation.instrumentation_mode == "consan":
             passes.ttgpuir.add_concurrency_sanitizer(pm)
+        
+        # Attach `allocation.offset` and `ttg.shared` (sizes) used by lowerings
+        # like ConvertLayout/Reduce. This does NOT allocate real shared memory
+        # for the custom backend; it only annotates the IR.
+        passes.ttgpuir.add_allocate_shared_memory(pm)
         
         passes.ttgpuir.add_allocate_global_scratch_memory(pm)
         
@@ -363,16 +377,15 @@ def _inject_custom_intrinsic_declarations(llvm_ir: str) -> str:
     """
     intrinsics = [
         # (name, return_type, param_types, attributes)
-        ("llvm.custom.barrier", "void", "", "convergent nounwind"),
-        ("llvm.custom.warp.barrier", "void", "", "convergent nounwind"),
-        ("llvm.custom.lane.id", "i32", "", "readnone nounwind"),
-        ("llvm.custom.warp.size", "i32", "", "readnone nounwind"),
-        ("llvm.custom.program.id", "i32", "i32", "readnone nounwind"),
-        ("llvm.custom.num.programs", "i32", "i32", "readnone nounwind"),
-        ("llvm.custom.ballot", "i32", "i1", "convergent nounwind"),
-        ("llvm.custom.shuffle.xor", "i32", "i32, i32", "convergent nounwind"),
-        ("llvm.custom.shuffle.up", "i32", "i32, i32", "convergent nounwind"),
-        ("llvm.custom.shuffle.idx", "i32", "i32, i32", "convergent nounwind"),
+        ("llvm.riscv.simt.barrier", "void", "", "convergent nounwind"),
+        ("llvm.riscv.simt.warp.barrier", "void", "", "convergent nounwind"),
+        ("llvm.riscv.simt.lane.id", "i32", "", "readnone nounwind"),
+        ("llvm.riscv.simt.warp.size", "i32", "", "readnone nounwind"),
+        ("llvm.riscv.simt.program.id", "i32", "i32", "readnone nounwind"),
+        ("llvm.riscv.simt.num.programs", "i32", "i32", "readnone nounwind"),
+        ("llvm.riscv.simt.ballot.mask", "i32", "i1", "convergent nounwind"),
+        ("llvm.riscv.simt.shfl.bfly", "i32", "i32, i32", "convergent nounwind"),
+        ("llvm.riscv.simt.shfl.idx", "i32", "i32, i32", "convergent nounwind"),
     ]
     
     # Build declarations block
@@ -560,3 +573,148 @@ def make_llir(mod, metadata: dict, opt, capability: int) -> str:
     del llvm_mod
     del context
     return ret
+
+
+# =============================================================================
+# Stage: LLVM IR -> RISCV Assembly
+# =============================================================================
+
+def _get_riscv_simt_config():
+    """Get RISCV SIMT backend configuration.
+    
+    Returns:
+        dict: Configuration for RISCV SIMT codegen
+    """
+    return {
+        # Target triple: riscv32-unknown-unknown for custom SIMT
+        "triple": os.environ.get("TRITON_CUSTOM_LLVM_TRIPLE", "riscv32-unknown-unknown"),
+        # CPU: rv32imf or specific model
+        "cpu": os.environ.get("TRITON_CUSTOM_LLVM_CPU", "generic-rv32"),
+        # Features: +f for float, +m for multiply
+        "features": os.environ.get("TRITON_CUSTOM_LLVM_FEATURES", "+f,+m"),
+        # LLVM flags
+        "flags": os.environ.get("TRITON_CUSTOM_LLC_FLAGS", "").split() if os.environ.get("TRITON_CUSTOM_LLC_FLAGS") else [],
+    }
+
+
+def make_asm(src: str, metadata: dict, opt, capability: int) -> str:
+    """Convert LLVM IR to RISCV assembly.
+    
+    This is analogous to NVIDIA's make_ptx, but for RISCV SIMT.
+    
+    Args:
+        src: LLVM IR string
+        metadata: Compilation metadata dict
+        opt: Compiler options
+        capability: Target capability (e.g., 70)
+        
+    Returns:
+        str: RISCV assembly code
+    """
+    import re
+    
+    config = _get_riscv_simt_config()
+    triple = config["triple"]
+    cpu = config["cpu"]
+    features = config["features"]
+    flags = config["flags"]
+    
+    # Enable FP fusion if requested
+    enable_fp_fusion = getattr(opt, "enable_fp_fusion", True)
+    
+    # Find kernel names from LLVM IR
+    # Look for: define void @kernel_name( or define dso_local void @kernel_name(
+    names = re.findall(r'define\s+(?:dso_local\s+)?void\s+@([a-zA-Z_][a-zA-Z0-9_]*)\s*\(', src)
+    if names:
+        metadata["name"] = names[0]
+    else:
+        metadata["name"] = "triton_kernel"
+    
+    # Translate LLVM IR to assembly using Triton's llvm module
+    # This calls into the LLVM backend (which must have RISCV target enabled)
+    try:
+        asm = llvm.translate_to_asm(
+            src,           # LLVM IR string
+            triple,        # Target triple
+            cpu,           # CPU model
+            features,      # CPU features
+            flags,         # Additional flags
+            enable_fp_fusion,  # FP fusion
+            False          # isObject=False for assembly
+        )
+    except Exception as e:
+        # If LLVM backend translation fails, provide helpful error
+        raise RuntimeError(
+            f"Failed to translate LLVM IR to RISCV assembly.\n"
+            f"Triple: {triple}, CPU: {cpu}, Features: {features}\n"
+            f"Error: {e}\n"
+            f"Make sure LLVM was built with RISCV target enabled:\n"
+            f"  LLVM_TARGETS=Native;NVPTX;AMDGPU;RISCV ./scripts/build-llvm-project.sh"
+        ) from e
+    
+    # Dump assembly if requested
+    if _env_flag("TRITON_CUSTOM_DUMP_ASM"):
+        print("// -----// RISCV SIMT Assembly Dump //----- //")
+        print(asm)
+    
+    return asm
+
+
+def make_obj(src: str, metadata: dict, opt, capability: int) -> bytes:
+    """Convert LLVM IR to object file (ELF).
+    
+    This is analogous to NVIDIA's make_cubin, but for RISCV SIMT.
+    
+    Args:
+        src: LLVM IR string (we go directly from LLIR to object)
+        metadata: Compilation metadata dict
+        opt: Compiler options
+        capability: Target capability
+        
+    Returns:
+        bytes: ELF object file bytes
+    """
+    import re
+    
+    config = _get_riscv_simt_config()
+    triple = config["triple"]
+    cpu = config["cpu"]
+    features = config["features"]
+    flags = config["flags"]
+    
+    enable_fp_fusion = getattr(opt, "enable_fp_fusion", True)
+    
+    # Find kernel names
+    names = re.findall(r'define\s+(?:dso_local\s+)?void\s+@([a-zA-Z_][a-zA-Z0-9_]*)\s*\(', src)
+    if names:
+        metadata["name"] = names[0]
+    else:
+        metadata["name"] = "triton_kernel"
+    
+    # Translate LLVM IR to object file
+    try:
+        obj = llvm.translate_to_asm(
+            src,           # LLVM IR string
+            triple,        # Target triple
+            cpu,           # CPU model
+            features,      # CPU features
+            flags,         # Additional flags
+            enable_fp_fusion,  # FP fusion
+            True           # isObject=True for object file
+        )
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to translate LLVM IR to RISCV object file.\n"
+            f"Triple: {triple}, CPU: {cpu}, Features: {features}\n"
+            f"Error: {e}\n"
+            f"Make sure LLVM was built with RISCV target enabled."
+        ) from e
+    
+    # obj is returned as bytes when isObject=True
+    if isinstance(obj, str):
+        obj = obj.encode('latin-1')  # Should not happen, but handle gracefully
+    
+    if _env_flag("TRITON_CUSTOM_DUMP_OBJ_SIZE"):
+        print(f"// RISCV object file size: {len(obj)} bytes")
+    
+    return obj

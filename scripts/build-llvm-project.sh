@@ -2,15 +2,17 @@
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
-LLVM_TARGETS=${LLVM_TARGETS:-Native;NVPTX;AMDGPU}
+# Include RISCV target for Custom SIMT backend
+LLVM_TARGETS=${LLVM_TARGETS:-Native;NVPTX;AMDGPU;RISCV}
 LLVM_PROJECTS=${LLVM_PROJECTS:-mlir;llvm;lld}
 LLVM_BUILD_TYPE=${LLVM_BUILD_TYPE:-RelWithDebInfo}
 LLVM_BUILD_SHARED_LIBS=${LLVM_BUILD_SHARED_LIBS:-OFF}
-LLVM_COMMIT_HASH=${LLVM_COMMIT_HASH:-$(cat "$REPO_ROOT/cmake/llvm-hash.txt")}
-LLVM_PROJECT_PATH=${LLVM_PROJECT_PATH:-"$REPO_ROOT/llvm-project"}
+# Use local llvm-project-simt directory
+LLVM_PROJECT_PATH=${LLVM_PROJECT_PATH:-"$REPO_ROOT/llvm-project-simt"}
 LLVM_BUILD_PATH=${LLVM_BUILD_PATH:-"$LLVM_PROJECT_PATH/build"}
 LLVM_INSTALL_PATH=${LLVM_INSTALL_PATH:-"$LLVM_PROJECT_PATH/install"}
-LLVM_PROJECT_URL=${LLVM_PROJECT_URL:-"https://github.com/llvm/llvm-project"}
+LLVM_PROJECT_URL=${LLVM_PROJECT_URL:-"https://github.com/3YCArch/llvm-project-simt.git"}
+LLVM_BRANCH=${LLVM_BRANCH:-"simt-main"}
 
 if [ -z "$CMAKE_ARGS" ]; then
     if [ "$#" -eq 0 ]; then
@@ -37,17 +39,22 @@ if [ -z "$CMAKE_ARGS" ]; then
     fi
 fi
 
-if [ -n "$LLVM_CLEAN" ] && [ -e "$LLVM_PROJECT_PATH" ]; then
-    rm -rf "$LLVM_PROJECT_PATH"
+if [ -n "$LLVM_CLEAN" ] && [ -e "$LLVM_BUILD_PATH" ]; then
+    rm -rf "$LLVM_BUILD_PATH"
 fi
 
-if [ ! -e "$LLVM_PROJECT_PATH" ]; then
-    echo "Cloning from $LLVM_PROJECT_URL"
-    git clone "$LLVM_PROJECT_URL" "$LLVM_PROJECT_PATH"
+# Always pull the latest version from llvm-project-simt
+if [ -e "$LLVM_PROJECT_PATH" ]; then
+    echo "Pulling latest changes from llvm-project-simt (branch: $LLVM_BRANCH)"
+    git -C "$LLVM_PROJECT_PATH" remote set-url origin "$LLVM_PROJECT_URL"
+    git -C "$LLVM_PROJECT_PATH" fetch origin
+    git -C "$LLVM_PROJECT_PATH" checkout "$LLVM_BRANCH"
+    git -C "$LLVM_PROJECT_PATH" pull origin "$LLVM_BRANCH"
+else
+    echo "Cloning llvm-project-simt from $LLVM_PROJECT_URL (branch: $LLVM_BRANCH)"
+    git clone -b "$LLVM_BRANCH" "$LLVM_PROJECT_URL" "$LLVM_PROJECT_PATH"
 fi
-echo "Resetting to $LLVM_COMMIT_HASH"
-git -C "$LLVM_PROJECT_PATH" fetch origin "$LLVM_COMMIT_HASH"
-git -C "$LLVM_PROJECT_PATH" reset --hard "$LLVM_COMMIT_HASH"
+echo "Using llvm-project-simt at $(git -C "$LLVM_PROJECT_PATH" rev-parse HEAD)"
 echo "Configuring with ${CMAKE_ARGS[@]}"
 cmake "${CMAKE_ARGS[@]}"
 echo "Building LLVM"

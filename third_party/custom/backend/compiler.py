@@ -57,7 +57,32 @@ class CustomBackend(nvidia_compiler.CUDABackend):
             stages["ttgir"] = lambda src, metadata: self.gluon_to_ttgir(src, metadata, options, capability)
 
         stages["llir"] = lambda src, metadata: self.make_llir(src, metadata, options, capability)
-        stages["blob"] = lambda src, metadata: self.make_blob(src, metadata, options, capability)
+        
+        # Determine which codegen path to use:
+        # - "llir": Stop at LLIR (for debugging/inspection)
+        # - "asm": LLIR -> RISCV Assembly (for debugging/inspection)
+        # - "obj": LLIR -> RISCV Object file (ELF)
+        # - "blob": LLIR -> External codegen -> Blob (legacy)
+        codegen_mode = os.environ.get("TRITON_CUSTOM_CODEGEN_MODE", "blob").lower()
+        
+        if codegen_mode == "llir":
+            # Stop at LLIR - no further stages
+            pass
+        elif codegen_mode == "asm":
+            # Pipeline: ttir -> ttgir -> llir -> asm
+            stages["asm"] = lambda src, metadata: self.make_asm(src, metadata, options, capability)
+        elif codegen_mode == "obj":
+            # Pipeline: ttir -> ttgir -> llir -> obj
+            stages["obj"] = lambda src, metadata: self.make_obj(src, metadata, options, capability)
+        elif codegen_mode == "full":
+            # Pipeline: ttir -> ttgir -> llir -> asm -> obj -> blob
+            # Full pipeline with all intermediate stages
+            stages["asm"] = lambda src, metadata: self.make_asm(src, metadata, options, capability)
+            stages["obj"] = lambda src, metadata: self.make_obj_from_llir(src, metadata, options, capability)
+            stages["blob"] = lambda src, metadata: self.make_blob_from_obj(src, metadata, options, capability)
+        else:
+            # Default: use external codegen tool (legacy blob mode)
+            stages["blob"] = lambda src, metadata: self.make_blob(src, metadata, options, capability)
 
         # Preserve the stages inspection hook behavior.
         from triton import knobs
@@ -68,7 +93,16 @@ class CustomBackend(nvidia_compiler.CUDABackend):
     def __init__(self, target: GPUTarget) -> None:
         super().__init__(target)
         # Ensure the final stage name matches the binary extension Triton uses.
-        self.binary_ext = "blob"
+        # This will be overridden based on codegen mode
+        codegen_mode = os.environ.get("TRITON_CUSTOM_CODEGEN_MODE", "blob").lower()
+        if codegen_mode == "llir":
+            self.binary_ext = "llir"
+        elif codegen_mode == "asm":
+            self.binary_ext = "asm"
+        elif codegen_mode == "obj":
+            self.binary_ext = "o"
+        else:
+            self.binary_ext = "blob"
 
     @staticmethod
     def make_ttir(mod, metadata, opt, capability):
@@ -80,6 +114,49 @@ class CustomBackend(nvidia_compiler.CUDABackend):
 
     def make_llir(self, src, metadata, options: Any, capability: int) -> str:
         return pipeline.make_llir(src, metadata, options, capability)
+
+    def make_asm(self, src: str, metadata: dict, options: Any, capability: int) -> str:
+        """LLVM IR (string) -> RISCV Assembly (string).
+        
+        Uses the integrated LLVM backend to generate RISCV assembly.
+        """
+        return pipeline.make_asm(src, metadata, options, capability)
+
+    def make_obj(self, src: str, metadata: dict, options: Any, capability: int) -> bytes:
+        """LLVM IR (string) -> RISCV Object file (bytes).
+        
+        Uses the integrated LLVM backend to generate an ELF object file.
+        """
+        return pipeline.make_obj(src, metadata, options, capability)
+
+    def make_obj_from_llir(self, src: str, metadata: dict, options: Any, capability: int) -> bytes:
+        """LLVM IR (string) -> RISCV Object file (bytes).
+        
+        Alternative entry point for full pipeline mode.
+        """
+        return pipeline.make_obj(src, metadata, options, capability)
+
+    def make_blob_from_obj(self, obj: bytes, metadata: dict, options: Any, capability: int) -> bytes:
+        """Object file (bytes) -> Scheme-A blob (bytes).
+        
+        Wraps an ELF object file in the Scheme-A blob format.
+        """
+        warp_size = int(os.environ.get("TRITON_CUSTOM_WARP_SIZE", "32"))
+        stack_per_warp = int(os.environ.get("TRITON_CUSTOM_STACK_PER_WARP_BYTES", "1024"))
+        num_warps_hint = int(getattr(options, "num_warps", 0) or 0)
+
+        meta = build_meta_tlv(
+            [
+                (1, b"ilp32f"),
+                (2, str(metadata.get("name", "")).encode("utf-8")),
+                (3, (stack_per_warp).to_bytes(4, "little")),
+                (4, (1).to_bytes(1, "little")),
+                (5, (num_warps_hint).to_bytes(2, "little")),
+                (6, (warp_size).to_bytes(2, "little")),
+            ]
+        )
+
+        return pack_blob_v1(text=obj, rodata=b"", meta=meta)
 
     def make_blob(self, src: str, metadata: dict, options: Any, capability: int) -> bytes:
         """LLVM IR (string) -> Scheme-A blob (bytes).

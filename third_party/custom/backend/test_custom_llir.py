@@ -8,7 +8,7 @@ generates LLVM IR without any NVIDIA-specific dependencies.
 Phase A4 Acceptance Criteria:
 - [ ] Generated LLIR does not contain `nvptx64-nvidia-cuda`
 - [ ] Generated LLIR does not contain `@llvm.nvvm.*` intrinsics
-- [ ] Generated LLIR contains `llvm.custom.*` intrinsics
+- [ ] Generated LLIR contains `llvm.riscv.simt.*` intrinsics
 - [ ] LLIR can be parsed by `llvm-as` (syntax correct)
 - [ ] Triple is `riscv32-unknown-unknown` or other non-NVIDIA triple
 
@@ -57,16 +57,16 @@ class PhaseA4Validator:
     ]
     
     EXPECTED_CUSTOM_INTRINSICS = [
-        "llvm.custom.program.id",
-        "llvm.custom.barrier",
-        "llvm.custom.thread.id",
-        "llvm.custom.block.id",
-        "llvm.custom.block.dim",
-        "llvm.custom.grid.dim",
-        "llvm.custom.lane.id",
-        "llvm.custom.warp.size",
-        "llvm.custom.shuffle",
-        "llvm.custom.ballot",
+        "llvm.riscv.simt.program.id",
+        "llvm.riscv.simt.barrier",
+        "llvm.riscv.simt.thread.id",
+        "llvm.riscv.simt.block.id",
+        "llvm.riscv.simt.block.dim",
+        "llvm.riscv.simt.grid.dim",
+        "llvm.riscv.simt.lane.id",
+        "llvm.riscv.simt.warp.size",
+        "llvm.riscv.simt.shfl",
+        "llvm.riscv.simt.ballot",
     ]
     
     def __init__(self, llir: str):
